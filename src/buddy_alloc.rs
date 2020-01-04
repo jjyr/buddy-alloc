@@ -5,7 +5,7 @@ pub const MAX_K: usize = 16;
 /// min alloc space
 pub const MIN_ALLOC_SPACE: usize = 1000_000;
 
-const fn block_size(k: usize) -> usize {
+pub const fn block_size(k: usize) -> usize {
     (1 << k) * LEAF_SIZE
 }
 
@@ -41,8 +41,8 @@ fn bit_clear(bit_array: *mut u8, i: usize) {
     }
 }
 
-// find a suitable k for n bytes
-fn firstk(n: usize) -> usize {
+// find a min k that great than n bytes
+pub fn first_up_k(n: usize) -> usize {
     let mut k = 0;
     let mut size = LEAF_SIZE;
     while size < n {
@@ -50,6 +50,18 @@ fn firstk(n: usize) -> usize {
         size *= 2;
     }
     core::cmp::min(k, MAX_K)
+}
+
+// find a max k that less than n bytes
+pub fn first_down_k(n: usize) -> Option<usize> {
+    let mut k: usize = 0;
+    let mut size = LEAF_SIZE;
+    while size < n {
+        k += 1;
+        size *= 2;
+    }
+    let k = if size != n { k.checked_sub(1) } else { Some(k) };
+    k.map(|k| core::cmp::min(k, MAX_K))
 }
 
 #[derive(Debug)]
@@ -69,6 +81,7 @@ impl BuddyList {
     fn remove(list: *mut BuddyList) {
         unsafe { (*(*list).prev).next = (*list).next };
     }
+
     fn pop(list: *mut BuddyList) -> *mut BuddyList {
         assert!(!Self::is_empty(list));
         let n_list: *mut BuddyList = unsafe { (*list).next };
@@ -110,8 +123,11 @@ impl Default for Entry {
 }
 
 pub struct BuddyAllocator {
+    /// which free list start from
     base_addr: usize,
+    /// lower_addr after allocated
     lower_addr: usize,
+    /// higher_addr
     higher_addr: usize,
     entries: [Entry; MAX_K + 1],
 }
@@ -125,9 +141,6 @@ impl BuddyAllocator {
             );
         }
         // alloc buddy allocator memory
-        // let buddy_alloc: *mut BuddyAllocator = lower_addr as *mut BuddyAllocator;
-        // lower_addr += core::mem::size_of::<BuddyAllocator>();
-        // let mut buddy_alloc = unsafe { *buddy_alloc };
         let mut entries: [Entry; MAX_K + 1] = Default::default();
 
         // init entires free list
@@ -158,17 +171,9 @@ impl BuddyAllocator {
         let base_addr = lower_addr;
         // fill free list
         while higher_addr.saturating_sub(lower_addr) > LEAF_SIZE {
-            let k = {
-                let k = firstk(higher_addr - lower_addr);
-                let block_size = block_size(k);
-                let is_overflow = lower_addr + block_size > higher_addr;
-                if is_overflow && k == 0 {
-                    break;
-                } else if is_overflow {
-                    k - 1
-                } else {
-                    k
-                }
+            let k = match first_down_k(higher_addr - lower_addr) {
+                Some(k) => k,
+                None => break,
             };
             BuddyList::push(entries[k].free, lower_addr as *const u8);
             lower_addr += block_size(k);
@@ -188,7 +193,7 @@ impl BuddyAllocator {
     }
 
     pub fn malloc(&mut self, nbytes: usize) -> *mut u8 {
-        let fk = firstk(nbytes);
+        let fk = first_up_k(nbytes);
         let mut k = match (fk..=MAX_K).find(|&k| !BuddyList::is_empty(self.entries[k].free)) {
             Some(k) => k,
             None => return core::ptr::null_mut(),
@@ -203,6 +208,16 @@ impl BuddyAllocator {
             k -= 1;
         }
         p
+    }
+
+    /// total available bytes
+    pub fn available_bytes(&self) -> usize {
+        self.lower_addr - self.base_addr
+    }
+
+    /// wasted bytes due to buddy algorithm
+    pub fn wasted_bytes(&self) -> usize {
+        self.higher_addr - self.lower_addr
     }
 
     fn block_index(&self, k: usize, p: *const u8) -> usize {

@@ -1,4 +1,7 @@
-use crate::{BuddyAllocator, LEAF_SIZE, MAX_K};
+use crate::{
+    buddy_alloc::{block_size, first_down_k},
+    BuddyAllocator, LEAF_SIZE, MAX_K,
+};
 use std::alloc::{alloc, Layout};
 
 const MALLOC_SIZE: usize = 1000_000;
@@ -24,6 +27,34 @@ fn test_basic_malloc() {
     unsafe { p.write(42) };
     assert_eq!(p_addr, p as usize);
     assert_eq!(unsafe { *p }, 42);
+}
+
+#[test]
+fn test_multi_size_malloc() {
+    let mut allocator = new_allocator();
+    let mut available_bytes = allocator.available_bytes();
+    let mut count = 0;
+    // alloc serveral sized blocks
+    while available_bytes >= LEAF_SIZE {
+        let k = first_down_k(available_bytes).unwrap();
+        let bytes = block_size(k);
+        assert!(!allocator.malloc(bytes).is_null());
+        available_bytes -= bytes;
+        count += 1;
+    }
+    assert_eq!(count, 8);
+}
+
+#[test]
+fn test_small_size_malloc() {
+    let mut allocator = new_allocator();
+    let mut available_bytes = allocator.available_bytes();
+    while available_bytes >= LEAF_SIZE {
+        assert!(!allocator.malloc(LEAF_SIZE).is_null());
+        available_bytes -= LEAF_SIZE;
+    }
+    // memory should be drained, we can't allocate even 1 byte
+    assert!(allocator.malloc(1).is_null());
 }
 
 #[test]
