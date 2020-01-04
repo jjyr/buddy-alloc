@@ -1,9 +1,17 @@
+//! Buddy alloc,
+//! This code heavily references from https://pdos.csail.mit.edu/6.828/2019/lec/malloc.c
+//! Check wiki to learn the algorithm: https://en.wikipedia.org/wiki/Buddy_memory_allocation
+//!
+//! For simplify, we only implement the fixed memory for now,
+//! which means the total memory never grows once the allocator is created.
+//! The user must initialize allocator with REQUIRED_SPACE addr ranges.
+
 /// the smallest allocation bytes
 pub const LEAF_SIZE: usize = 16;
 /// max leaf index, implies that the max capable is to alloc 1MB memory at a time
 pub const MAX_K: usize = 16;
 /// min alloc space
-pub const MIN_ALLOC_SPACE: usize = 1000_000;
+pub const REQUIRED_SPACE: usize = 1073428;
 
 pub const fn block_size(k: usize) -> usize {
     (1 << k) * LEAF_SIZE
@@ -49,7 +57,7 @@ pub fn first_up_k(n: usize) -> usize {
         k += 1;
         size *= 2;
     }
-    core::cmp::min(k, MAX_K)
+    k
 }
 
 // find a max k that less than n bytes
@@ -64,10 +72,41 @@ pub fn first_down_k(n: usize) -> Option<usize> {
     k.map(|k| core::cmp::min(k, MAX_K))
 }
 
-#[derive(Debug)]
 struct BuddyList {
     next: *mut BuddyList,
     prev: *mut BuddyList,
+}
+
+impl core::fmt::Debug for BuddyList {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "BuddyList {{ ")?;
+        if Self::is_empty(self as *const BuddyList) {
+            write!(f, "empty")?;
+        } else {
+            let mut count = 0;
+            let mut p = self as *const BuddyList;
+            while count == 0 || p != self as *const BuddyList {
+                unsafe {
+                    write!(
+                        f,
+                        "item({}, self: {:?}, next: {:?}, prev: {:?}) ",
+                        count,
+                        p,
+                        (*p).next,
+                        (*p).prev
+                    )?;
+                }
+                count += 1;
+                p = unsafe { (*p).next };
+
+                if count > 10 {
+                    write!(f, "items...")?;
+                    break;
+                }
+            }
+        }
+        write!(f, " }}")
+    }
 }
 
 impl BuddyList {
@@ -79,7 +118,10 @@ impl BuddyList {
     }
 
     fn remove(list: *mut BuddyList) {
-        unsafe { (*(*list).prev).next = (*list).next };
+        unsafe {
+            (*(*list).prev).next = (*list).next;
+            (*(*list).next).prev = (*list).prev;
+        }
     }
 
     fn pop(list: *mut BuddyList) -> *mut BuddyList {
@@ -99,8 +141,8 @@ impl BuddyList {
         }
     }
 
-    fn is_empty(list: *mut BuddyList) -> bool {
-        unsafe { (*list).next == list }
+    fn is_empty(list: *const BuddyList) -> bool {
+        unsafe { (*list).next as *const BuddyList == list }
     }
 }
 
@@ -123,22 +165,33 @@ impl Default for Entry {
 }
 
 pub struct BuddyAllocator {
-    /// which free list start from
+    /// space start addr
     base_addr: usize,
-    /// lower_addr after allocated
-    lower_addr: usize,
-    /// higher_addr
+    /// space end addr
     higher_addr: usize,
     entries: [Entry; MAX_K + 1],
 }
 
 impl BuddyAllocator {
+    pub fn required_space() -> usize {
+        let mut space = 0;
+        // allocator cost
+        for k in 0..=MAX_K {
+            space += core::mem::size_of::<BuddyList>();
+            let used_bytes = roundup(nblock(k), 8) / 8;
+            space += used_bytes
+        }
+        for k in 1..=MAX_K {
+            let used_bytes = roundup(nblock(k), 8) / 8;
+            space += used_bytes
+        }
+        // usage space
+        space + block_size(MAX_K)
+    }
+
     pub fn new(mut lower_addr: usize, higher_addr: usize) -> Self {
-        if higher_addr < lower_addr + MIN_ALLOC_SPACE {
-            panic!(
-                "alloc space is not enough, buddy allocator need at least {} bytes",
-                MIN_ALLOC_SPACE
-            );
+        if higher_addr != lower_addr + REQUIRED_SPACE {
+            panic!("buddy allocator need exactly {} bytes", REQUIRED_SPACE);
         }
         // alloc buddy allocator memory
         let mut entries: [Entry; MAX_K + 1] = Default::default();
@@ -168,25 +221,14 @@ impl BuddyAllocator {
             lower_addr += used_bytes;
         }
 
-        let base_addr = lower_addr;
-        // fill free list
-        while higher_addr.saturating_sub(lower_addr) > LEAF_SIZE {
-            let k = match first_down_k(higher_addr - lower_addr) {
-                Some(k) => k,
-                None => break,
-            };
-            BuddyList::push(entries[k].free, lower_addr as *const u8);
-            lower_addr += block_size(k);
-        }
-        assert!(
-            lower_addr < higher_addr,
-            "Alloc space is not enough: lower_addr {}, higher_addr {}",
-            lower_addr,
-            higher_addr
+        assert_eq!(
+            higher_addr - lower_addr,
+            block_size(MAX_K),
+            "not satisfied required space"
         );
+        BuddyList::push(entries[MAX_K].free, lower_addr as *const u8);
         BuddyAllocator {
-            base_addr,
-            lower_addr,
+            base_addr: lower_addr,
             higher_addr,
             entries,
         }
@@ -210,18 +252,64 @@ impl BuddyAllocator {
         p
     }
 
-    /// total available bytes
+    pub fn free(&mut self, mut p: *mut u8) {
+        let mut k = self.block_k(p);
+        while k < MAX_K {
+            let block_index = self.block_index(k, p);
+            bit_clear(self.entries[k].alloc, block_index);
+            let buddy = if block_index % 2 == 0 {
+                block_index + 1
+            } else {
+                block_index - 1
+            };
+            if bit_isset(self.entries[k].alloc, buddy) {
+                break;
+            }
+            // merge buddy since its free
+            // 1. clear split of k + 1
+            // 2. set p to the address of merged block
+            // 3. repeat for k = k + 1 until reach MAX_K
+            // 4. push p back to k entry free list
+            let q = self.block_addr(k, buddy);
+            BuddyList::remove(q as *mut BuddyList);
+            if buddy % 2 == 0 {
+                p = q as *mut u8;
+            }
+            bit_clear(self.entries[k + 1].split, self.block_index(k + 1, p));
+            k += 1;
+        }
+        BuddyList::push(self.entries[k].free, p);
+    }
+
+    /// available bytes
     pub fn available_bytes(&self) -> usize {
-        self.lower_addr - self.base_addr
+        self.higher_addr - self.base_addr
     }
 
     /// wasted bytes due to buddy algorithm
     pub fn wasted_bytes(&self) -> usize {
-        self.higher_addr - self.lower_addr
+        REQUIRED_SPACE - self.available_bytes()
     }
 
+    /// find k of p
+    fn block_k(&self, p: *const u8) -> usize {
+        for k in 0..MAX_K {
+            if bit_isset(self.entries[k + 1].split, self.block_index(k + 1, p)) {
+                return k;
+            }
+        }
+        0
+    }
+
+    /// block index of p under k
     fn block_index(&self, k: usize, p: *const u8) -> usize {
         let n = p as usize - self.base_addr;
         n / block_size(k)
+    }
+
+    /// block addr of index under k
+    fn block_addr(&self, k: usize, i: usize) -> usize {
+        let n = i * block_size(k);
+        self.base_addr + n
     }
 }
