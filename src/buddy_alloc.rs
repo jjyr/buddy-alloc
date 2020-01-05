@@ -169,7 +169,7 @@ impl Default for Entry {
     }
 }
 
-pub struct BuddyAllocator {
+pub struct BuddyAlloc {
     /// space start addr
     base_addr: usize,
     /// space end addr
@@ -177,7 +177,7 @@ pub struct BuddyAllocator {
     entries: [Entry; MAX_K + 1],
 }
 
-impl BuddyAllocator {
+impl BuddyAlloc {
     pub fn required_space() -> usize {
         let mut space = 0;
         // allocator cost
@@ -232,7 +232,7 @@ impl BuddyAllocator {
             "not satisfied required space"
         );
         BuddyList::push(entries[MAX_K].free, lower_addr as *mut u8);
-        BuddyAllocator {
+        BuddyAlloc {
             base_addr: lower_addr,
             higher_addr,
             entries,

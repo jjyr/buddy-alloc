@@ -1,16 +1,16 @@
 use crate::{
-    buddy_alloc::{block_size, first_down_k},
-    BuddyAllocator, LEAF_SIZE, REQUIRED_SPACE,
+    buddy_alloc::{block_size, first_down_k, BuddyAlloc},
+    LEAF_SIZE, REQUIRED_SPACE,
 };
 
-fn with_allocator<F: FnOnce(BuddyAllocator)>(f: F) {
+fn with_allocator<F: FnOnce(BuddyAlloc)>(f: F) {
     use std::alloc::{alloc, dealloc, Layout};
     let layout = Layout::new::<[u8; REQUIRED_SPACE]>();
     unsafe {
         let mem = alloc(layout);
         let lower_addr = mem as usize;
         let higher_addr = mem.add(REQUIRED_SPACE) as usize;
-        let allocator = BuddyAllocator::new(lower_addr, higher_addr);
+        let allocator = BuddyAlloc::new(lower_addr, higher_addr);
         f(allocator);
         dealloc(mem, layout);
     }
@@ -18,7 +18,7 @@ fn with_allocator<F: FnOnce(BuddyAllocator)>(f: F) {
 
 #[test]
 fn test_required_space() {
-    assert_eq!(BuddyAllocator::required_space(), REQUIRED_SPACE);
+    assert_eq!(BuddyAlloc::required_space(), REQUIRED_SPACE);
 }
 
 #[test]
