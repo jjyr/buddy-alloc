@@ -6,12 +6,14 @@
 //! which means the total memory never grows once the allocator is created.
 //! The user must initialize allocator with REQUIRED_SPACE addr ranges.
 
+#![allow(clippy::needless_range_loop)]
+
 /// the smallest allocation bytes
 pub const LEAF_SIZE: usize = 16;
 /// max leaf index, implies that the max capable is to alloc 1MB memory at a time
 pub const MAX_K: usize = 16;
 /// min alloc space
-pub const REQUIRED_SPACE: usize = 1073428;
+pub const REQUIRED_SPACE: usize = 1_073_428;
 
 pub const fn block_size(k: usize) -> usize {
     (1 << k) * LEAF_SIZE
@@ -45,7 +47,7 @@ fn bit_clear(bit_array: *mut u8, i: usize) {
     unsafe {
         let b = bit_array.add(i / 8);
         let m = 1 << (i % 8);
-        *b = *b & !m;
+        *b &= !m;
     }
 }
 
@@ -128,16 +130,19 @@ impl BuddyList {
         assert!(!Self::is_empty(list));
         let n_list: *mut BuddyList = unsafe { (*list).next };
         Self::remove(n_list);
-        return n_list;
+        n_list
     }
 
-    fn push(list: *mut BuddyList, p: *const u8) {
-        let n_list: *mut BuddyList = p as *mut BuddyList;
+    fn push(list: *mut BuddyList, p: *mut u8) {
+        let p = p.cast::<BuddyList>();
         unsafe {
-            (*n_list).next = (*list).next;
-            (*n_list).prev = list;
-            (*(*list).next).prev = n_list;
-            (*list).next = n_list;
+            let n_list: BuddyList = BuddyList {
+                prev: list,
+                next: (*list).next,
+            };
+            p.write_unaligned(n_list);
+            (*(*list).next).prev = p;
+            (*list).next = p;
         }
     }
 
@@ -226,7 +231,7 @@ impl BuddyAllocator {
             block_size(MAX_K),
             "not satisfied required space"
         );
-        BuddyList::push(entries[MAX_K].free, lower_addr as *const u8);
+        BuddyList::push(entries[MAX_K].free, lower_addr as *mut u8);
         BuddyAllocator {
             base_addr: lower_addr,
             higher_addr,
@@ -243,7 +248,7 @@ impl BuddyAllocator {
         let p: *mut u8 = BuddyList::pop(self.entries[k].free) as *mut u8;
         bit_set(self.entries[k].alloc, self.block_index(k, p));
         while k > fk {
-            let q: *const u8 = (p as usize + block_size(k - 1)) as *const u8;
+            let q: *mut u8 = (p as usize + block_size(k - 1)) as *mut u8;
             bit_set(self.entries[k].split, self.block_index(k, p));
             bit_set(self.entries[k - 1].alloc, self.block_index(k - 1, p));
             BuddyList::push(self.entries[k - 1].free, q);
