@@ -194,10 +194,9 @@ impl BuddyAlloc {
         space + block_size(MAX_K)
     }
 
-    pub fn new(mut lower_addr: usize, higher_addr: usize) -> Self {
-        if higher_addr != lower_addr + REQUIRED_SPACE {
-            panic!("buddy allocator need exactly {} bytes", REQUIRED_SPACE);
-        }
+    pub fn new(mut lower_addr: usize) -> Self {
+        let higher_addr = lower_addr + REQUIRED_SPACE;
+
         // alloc buddy allocator memory
         let mut entries: [Entry; MAX_K + 1] = Default::default();
 

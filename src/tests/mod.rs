@@ -9,8 +9,7 @@ fn with_allocator<F: FnOnce(BuddyAlloc)>(f: F) {
     unsafe {
         let mem = alloc(layout);
         let lower_addr = mem as usize;
-        let higher_addr = mem.add(REQUIRED_SPACE) as usize;
-        let allocator = BuddyAlloc::new(lower_addr, higher_addr);
+        let allocator = BuddyAlloc::new(lower_addr);
         f(allocator);
         dealloc(mem, layout);
     }
