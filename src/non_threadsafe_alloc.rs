@@ -4,11 +4,11 @@ use core::cell::RefCell;
 
 pub struct NonThreadsafeAlloc {
     inner: RefCell<Option<BuddyAlloc>>,
-    base_addr: *mut u8,
+    base_addr: *const u8,
 }
 
 impl NonThreadsafeAlloc {
-    pub const fn new(base_addr: *mut u8) -> Self {
+    pub const fn new(base_addr: *const u8) -> Self {
         NonThreadsafeAlloc {
             inner: RefCell::new(None),
             base_addr,

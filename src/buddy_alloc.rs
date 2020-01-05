@@ -194,7 +194,7 @@ impl BuddyAlloc {
         space + block_size(MAX_K)
     }
 
-    pub fn new(base_addr: *mut u8) -> Self {
+    pub fn new(base_addr: *const u8) -> Self {
         let mut lower_addr = base_addr as usize;
         let higher_addr = lower_addr + REQUIRED_SPACE;
 
