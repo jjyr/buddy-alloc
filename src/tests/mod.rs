@@ -8,8 +8,7 @@ fn with_allocator<F: FnOnce(BuddyAlloc)>(f: F) {
     let layout = Layout::new::<[u8; REQUIRED_SPACE]>();
     unsafe {
         let mem = alloc(layout);
-        let lower_addr = mem as usize;
-        let allocator = BuddyAlloc::new(lower_addr);
+        let allocator = BuddyAlloc::new(mem as *mut u8);
         f(allocator);
         dealloc(mem, layout);
     }

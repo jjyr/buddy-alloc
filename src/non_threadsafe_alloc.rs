@@ -4,14 +4,14 @@ use core::cell::RefCell;
 
 pub struct NonThreadsafeAlloc {
     inner: RefCell<Option<BuddyAlloc>>,
-    lower_addr: usize,
+    base_addr: *mut u8,
 }
 
 impl NonThreadsafeAlloc {
-    pub const fn new(lower_addr: usize) -> Self {
+    pub const fn new(base_addr: *mut u8) -> Self {
         NonThreadsafeAlloc {
             inner: RefCell::new(None),
-            lower_addr,
+            base_addr,
         }
     }
 
@@ -19,7 +19,7 @@ impl NonThreadsafeAlloc {
         if self.inner.borrow().is_none() {
             self.inner
                 .borrow_mut()
-                .replace(BuddyAlloc::new(self.lower_addr));
+                .replace(BuddyAlloc::new(self.base_addr));
         }
         let mut inner = self.inner.borrow_mut();
         f(inner.as_mut().expect("nerver"))
