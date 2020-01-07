@@ -5,5 +5,5 @@ mod non_threadsafe_alloc;
 #[cfg(test)]
 mod tests;
 
-pub use crate::buddy_alloc::{LEAF_SIZE, MAX_K, REQUIRED_SPACE};
+pub use crate::buddy_alloc::LEAF_SIZE;
 pub use non_threadsafe_alloc::NonThreadsafeAlloc;
