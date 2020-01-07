@@ -1,7 +1,6 @@
 default: integration
 
-.PHONY: integration check-fmt check clippy test
-integration: check-fmt check clippy test
+integration: check-fmt check clippy test run-example
 
 test:
 	cargo test --all --all-features ${TEST_ARGS} -- --nocapture
@@ -14,3 +13,6 @@ check-fmt:
 
 check:
 	cargo check --all --examples
+
+run-example:
+	cargo run --example non_threadsafe_demo
