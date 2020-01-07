@@ -1,7 +1,4 @@
-use crate::{
-    buddy_alloc::{block_size, BuddyAlloc},
-    LEAF_SIZE,
-};
+use crate::buddy_alloc::{block_size, BuddyAlloc, LEAF_SIZE};
 
 const HEAP_SIZE: usize = 1024 * 1024;
 
