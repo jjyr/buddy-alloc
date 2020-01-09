@@ -1,4 +1,6 @@
 # Buddy-alloc
+[![Crates.io](https://img.shields.io/crates/v/buddy-alloc.svg)](https://crates.io/crates/buddy-alloc)
+
 
 Buddy-alloc is a Rust implemented allocator, used for embedded environments.
 
