@@ -6,27 +6,25 @@ use core::cell::RefCell;
 /// perfect for single threaded devices
 pub struct NonThreadsafeAlloc {
     inner: RefCell<Option<BuddyAlloc>>,
-    base_addr: usize,
-    end_addr: usize,
+    base_addr: *const u8,
+    len: usize,
 }
 
 impl NonThreadsafeAlloc {
     /// see BuddyAlloc::new
-    pub const fn new(base_addr: usize, end_addr: usize) -> Self {
+    pub const fn new(base_addr: *const u8, len: usize) -> Self {
         NonThreadsafeAlloc {
             inner: RefCell::new(None),
             base_addr,
-            end_addr,
+            len,
         }
     }
 
     unsafe fn fetch_inner<R, F: FnOnce(&mut BuddyAlloc) -> R>(&self, f: F) -> R {
-        if self.inner.borrow().is_none() {
-            self.inner
-                .borrow_mut()
-                .replace(BuddyAlloc::new(self.base_addr, self.end_addr));
-        }
         let mut inner = self.inner.borrow_mut();
+        if inner.is_none() {
+            inner.replace(BuddyAlloc::new(self.base_addr, self.len));
+        }
         f(inner.as_mut().expect("nerver"))
     }
 }

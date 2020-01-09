@@ -5,7 +5,7 @@ const HEAP_SIZE: usize = 1024 * 1024;
 fn with_allocator<F: FnOnce(BuddyAlloc)>(heap_size: usize, f: F) {
     let buf: Vec<u8> = Vec::with_capacity(heap_size);
     unsafe {
-        let allocator = BuddyAlloc::new(buf.as_ptr() as usize, buf.as_ptr() as usize + HEAP_SIZE);
+        let allocator = BuddyAlloc::new(buf.as_ptr(), HEAP_SIZE);
         f(allocator);
     }
 }
