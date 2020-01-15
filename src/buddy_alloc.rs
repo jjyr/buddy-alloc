@@ -41,6 +41,7 @@ fn bit_isset(bit_array: *const u8, i: usize) -> bool {
 }
 
 fn bit_set(bit_array: *mut u8, i: usize) {
+    debug_assert!(!bit_isset(bit_array, i));
     unsafe {
         let b = bit_array.add(i / 8);
         let m = 1 << (i % 8);
@@ -49,6 +50,7 @@ fn bit_set(bit_array: *mut u8, i: usize) {
 }
 
 fn bit_clear(bit_array: *mut u8, i: usize) {
+    debug_assert!(bit_isset(bit_array, i));
     unsafe {
         let b = bit_array.add(i / 8);
         let m = 1 << (i % 8);
@@ -183,7 +185,10 @@ impl BuddyAlloc {
         let mut base_addr = base_addr as usize;
         let end_addr = base_addr + len;
         base_addr = roundup(base_addr, LEAF_SIZE);
-        let entries_size = log2((end_addr - base_addr) / LEAF_SIZE) + 1;
+        // we use (k + 1)-th entry's split flag to test existence of k-th entry's blocks;
+        // to accoding this convention, we make a dummy (entries_size - 1)-th entry.
+        // so we plus 2 on entries_size.
+        let entries_size = log2((end_addr - base_addr) / LEAF_SIZE) + 2;
 
         // alloc buddy allocator memory
         let used_bytes = core::mem::size_of::<Entry>() * entries_size;
@@ -243,8 +248,6 @@ impl BuddyAlloc {
         let mut base_addr = self.base_addr;
         let end_addr = self.end_addr;
         let entries_size = self.entries_size;
-        let unavailable_addr = end_addr / LEAF_SIZE * LEAF_SIZE;
-        let end_unavailable_addr = unavailable_addr + block_size(entries_size - 1);
 
         // try alloc blocks
         for k in (0..(entries_size - 1)).rev() {
@@ -254,20 +257,28 @@ impl BuddyAlloc {
 
             // alloc free blocks
             while base_addr + block_size <= end_addr {
+                debug_assert!(!bit_isset(
+                    entry.alloc,
+                    self.block_index(k, base_addr as *const u8)
+                ));
                 BuddyList::push(entry.free, base_addr as *mut u8);
-                let parent_index = self.block_index(k + 1, base_addr as *const u8);
-                bit_set(parent_entry.alloc, parent_index);
-                bit_set(parent_entry.split, parent_index);
+                // mark parent's split and alloc
+                let block_index = self.block_index(k, base_addr as *const u8);
+                if block_index % 2 == 0 {
+                    let parent_index = self.block_index(k + 1, base_addr as *const u8);
+                    if !bit_isset(parent_entry.alloc, parent_index) {
+                        bit_set(parent_entry.alloc, parent_index);
+                    }
+                    bit_set(parent_entry.split, parent_index);
+                }
                 base_addr += block_size;
             }
 
             // mark unavailable blocks as allocated
-            let mut base_unavailable_addr = unavailable_addr;
-            while base_unavailable_addr + block_size <= end_unavailable_addr {
-                let block_index = self.block_index(k, base_unavailable_addr as *const u8);
-                bit_set(entry.alloc, block_index);
-                base_unavailable_addr += block_size;
-            }
+            let n = nblock(k, entries_size);
+            let unavailable_block_index = self.block_index(k, base_addr as *const u8);
+            assert!(unavailable_block_index < n);
+            bit_set(entry.alloc, unavailable_block_index);
         }
 
         self.unavailable = end_addr - base_addr;
@@ -286,6 +297,10 @@ impl BuddyAlloc {
             let q: *mut u8 = (p as usize + block_size(k - 1)) as *mut u8;
             bit_set(self.entry(k).split, self.block_index(k, p));
             bit_set(self.entry(k - 1).alloc, self.block_index(k - 1, p));
+            debug_assert!(!bit_isset(
+                self.entry(k - 1).alloc,
+                self.block_index(k - 1, q)
+            ));
             BuddyList::push(self.entry(k - 1).free, q);
             k -= 1;
         }
@@ -318,6 +333,7 @@ impl BuddyAlloc {
             bit_clear(self.entry(k + 1).split, self.block_index(k + 1, p));
             k += 1;
         }
+        debug_assert!(!bit_isset(self.entry(k).alloc, self.block_index(k, p)));
         BuddyList::push(self.entry(k).free, p);
     }
 
@@ -339,9 +355,8 @@ impl BuddyAlloc {
     /// find k of p
     fn block_k(&self, p: *const u8) -> usize {
         for k in 0..(self.entries_size - 1) {
-            if bit_isset(self.entry(k + 1).split, self.block_index(k + 1, p))
-                && bit_isset(self.entry(k).alloc, self.block_index(k, p))
-            {
+            if bit_isset(self.entry(k + 1).split, self.block_index(k + 1, p)) {
+                debug_assert!(bit_isset(self.entry(k).alloc, self.block_index(k, p)));
                 return k;
             }
         }
@@ -351,7 +366,9 @@ impl BuddyAlloc {
     /// block index of p under k
     fn block_index(&self, k: usize, p: *const u8) -> usize {
         let n = p as usize - self.base_addr;
-        n / block_size(k)
+        let index = n / block_size(k);
+        debug_assert!(index < nblock(k, self.entries_size));
+        index
     }
 
     /// block addr of index under k
