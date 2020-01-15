@@ -1,4 +1,4 @@
-// #![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(test), no_std)]
 
 pub mod buddy_alloc;
 mod non_threadsafe_alloc;
