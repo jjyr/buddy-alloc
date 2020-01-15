@@ -14,5 +14,9 @@ check-fmt:
 check:
 	cargo check --all --examples
 
+EXAMPLES := non_threadsafe_demo non_threadsafe_test
+
 run-example:
-	cargo run --example non_threadsafe_demo
+	for example in ${EXAMPLES} ; do \
+		cargo run --example $$example; \
+	done

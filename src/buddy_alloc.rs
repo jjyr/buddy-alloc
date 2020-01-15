@@ -339,7 +339,9 @@ impl BuddyAlloc {
     /// find k of p
     fn block_k(&self, p: *const u8) -> usize {
         for k in 0..(self.entries_size - 1) {
-            if bit_isset(self.entry(k + 1).split, self.block_index(k + 1, p)) {
+            if bit_isset(self.entry(k + 1).split, self.block_index(k + 1, p))
+                && bit_isset(self.entry(k).alloc, self.block_index(k, p))
+            {
                 return k;
             }
         }

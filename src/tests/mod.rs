@@ -117,3 +117,15 @@ fn test_malloc_and_free() {
         _test_malloc_and_free(10, i * HEAP_SIZE);
     }
 }
+
+#[test]
+fn test_free_bug() {
+    with_allocator(HEAP_SIZE, |mut allocator| {
+        let p1 = allocator.malloc(32);
+        allocator.free(p1);
+        let p2 = allocator.malloc(4096);
+        let p3 = allocator.malloc(138);
+        allocator.free(p2);
+        allocator.free(p3);
+    });
+}
