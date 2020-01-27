@@ -6,13 +6,13 @@
 
 #![allow(clippy::needless_range_loop)]
 
-/// the smallest allocation bytes
-pub const LEAF_SIZE: usize = 16;
-
 const OOM_MSG: &str = "requires more memory space to initialize BuddyAlloc";
+const LEAF_ALIGN_ERROR_MSG: &str = "leaf size must be align to 16 bytes";
+/// required align to 16 bytes, since BuddyList takes 16 bytes on 64-bits machine.
+pub const MIN_LEAF_SIZE_ALIGN: usize = 16;
 
-pub const fn block_size(k: usize) -> usize {
-    (1 << k) * LEAF_SIZE
+pub const fn block_size(k: usize, leaf_size: usize) -> usize {
+    (1 << k) * leaf_size
 }
 
 const fn nblock(k: usize, entries_size: usize) -> usize {
@@ -59,9 +59,9 @@ fn bit_clear(bit_array: *mut u8, i: usize) {
 }
 
 // find a min k that great than n bytes
-pub fn first_up_k(n: usize) -> usize {
+pub fn first_up_k(n: usize, leaf_size: usize) -> usize {
     let mut k = 0;
-    let mut size = LEAF_SIZE;
+    let mut size = leaf_size;
     while size < n {
         k += 1;
         size *= 2;
@@ -173,6 +173,8 @@ pub struct BuddyAlloc {
     unavailable: usize,
     entries: *mut Entry,
     entries_size: usize,
+    /// min size of a block
+    leaf_size: usize,
 }
 
 impl BuddyAlloc {
@@ -181,14 +183,18 @@ impl BuddyAlloc {
     /// The `base_addr..(base_addr + len)` must be allocated before using,
     /// and must guarantee no others write to the memory range, to avoid undefined behaviors.
     /// The new function panic if memory space not enough for initialize BuddyAlloc.
-    pub unsafe fn new(base_addr: *const u8, len: usize) -> Self {
+    pub unsafe fn new(base_addr: *const u8, len: usize, leaf_size: usize) -> Self {
         let mut base_addr = base_addr as usize;
         let end_addr = base_addr + len;
-        base_addr = roundup(base_addr, LEAF_SIZE);
+        assert!(
+            leaf_size % MIN_LEAF_SIZE_ALIGN == 0 && leaf_size != 0,
+            LEAF_ALIGN_ERROR_MSG
+        );
+        base_addr = roundup(base_addr, leaf_size);
         // we use (k + 1)-th entry's split flag to test existence of k-th entry's blocks;
         // to accoding this convention, we make a dummy (entries_size - 1)-th entry.
         // so we plus 2 on entries_size.
-        let entries_size = log2((end_addr - base_addr) / LEAF_SIZE) + 2;
+        let entries_size = log2((end_addr - base_addr) / leaf_size) + 2;
 
         // alloc buddy allocator memory
         let used_bytes = core::mem::size_of::<Entry>() * entries_size;
@@ -196,16 +202,16 @@ impl BuddyAlloc {
         let entries = base_addr as *mut Entry;
         base_addr += used_bytes;
 
+        let buddy_list_size = core::mem::size_of::<BuddyList>();
         // init entries free
         for k in 0..entries_size {
             // use one bit for per memory block
-            let used_bytes = core::mem::size_of::<BuddyList>();
-            assert!(end_addr >= base_addr + used_bytes, OOM_MSG);
+            assert!(end_addr >= base_addr + buddy_list_size, OOM_MSG);
             let entry = entries.add(k).as_mut().expect("entry");
             entry.free = base_addr as *mut BuddyList;
-            core::ptr::write_bytes(entry.free, 0, used_bytes);
+            core::ptr::write_bytes(entry.free, 0, buddy_list_size);
             BuddyList::init(entry.free);
-            base_addr += used_bytes;
+            base_addr += buddy_list_size;
         }
 
         // init alloc
@@ -238,6 +244,7 @@ impl BuddyAlloc {
             end_addr,
             entries,
             entries_size,
+            leaf_size,
             unavailable: 0,
         };
         allocator.init_free_list();
@@ -251,7 +258,7 @@ impl BuddyAlloc {
 
         // try alloc blocks
         for k in (0..(entries_size - 1)).rev() {
-            let block_size = block_size(k);
+            let block_size = block_size(k, self.leaf_size);
             let entry = self.entry(k);
             let parent_entry = self.entry(k + 1);
 
@@ -285,7 +292,7 @@ impl BuddyAlloc {
     }
 
     pub fn malloc(&mut self, nbytes: usize) -> *mut u8 {
-        let fk = first_up_k(nbytes);
+        let fk = first_up_k(nbytes, self.leaf_size);
         let mut k =
             match (fk..self.entries_size).find(|&k| !BuddyList::is_empty(self.entry(k).free)) {
                 Some(k) => k,
@@ -294,7 +301,7 @@ impl BuddyAlloc {
         let p: *mut u8 = BuddyList::pop(self.entry(k).free) as *mut u8;
         bit_set(self.entry(k).alloc, self.block_index(k, p));
         while k > fk {
-            let q: *mut u8 = (p as usize + block_size(k - 1)) as *mut u8;
+            let q: *mut u8 = (p as usize + block_size(k - 1, self.leaf_size)) as *mut u8;
             bit_set(self.entry(k).split, self.block_index(k, p));
             bit_set(self.entry(k - 1).alloc, self.block_index(k - 1, p));
             debug_assert!(!bit_isset(
@@ -365,15 +372,18 @@ impl BuddyAlloc {
 
     /// block index of p under k
     fn block_index(&self, k: usize, p: *const u8) -> usize {
+        if (p as usize) < self.base_addr {
+            panic!("hehe");
+        }
         let n = p as usize - self.base_addr;
-        let index = n / block_size(k);
+        let index = n / block_size(k, self.leaf_size);
         debug_assert!(index < nblock(k, self.entries_size));
         index
     }
 
     /// block addr of index under k
     fn block_addr(&self, k: usize, i: usize) -> usize {
-        let n = i * block_size(k);
+        let n = i * block_size(k, self.leaf_size);
         self.base_addr + n
     }
 }

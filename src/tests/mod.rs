@@ -1,11 +1,12 @@
-use crate::buddy_alloc::{block_size, BuddyAlloc, LEAF_SIZE};
+use crate::buddy_alloc::{block_size, BuddyAlloc, MIN_LEAF_SIZE_ALIGN};
 
 const HEAP_SIZE: usize = 1024 * 1024;
+const LEAF_SIZE: usize = MIN_LEAF_SIZE_ALIGN;
 
-fn with_allocator<F: FnOnce(BuddyAlloc)>(heap_size: usize, f: F) {
+fn with_allocator<F: FnOnce(BuddyAlloc)>(heap_size: usize, leaf_size: usize, f: F) {
     let buf: Vec<u8> = Vec::with_capacity(heap_size);
     unsafe {
-        let allocator = BuddyAlloc::new(buf.as_ptr(), HEAP_SIZE);
+        let allocator = BuddyAlloc::new(buf.as_ptr(), heap_size, leaf_size);
         f(allocator);
     }
 }
@@ -27,7 +28,7 @@ pub fn first_down_k(n: usize) -> Option<usize> {
 
 #[test]
 fn test_available_bytes() {
-    with_allocator(HEAP_SIZE, |allocator| {
+    with_allocator(HEAP_SIZE, LEAF_SIZE, |allocator| {
         let available_bytes = allocator.available_bytes();
         assert!(available_bytes > (HEAP_SIZE as f64 * 0.8) as usize);
     });
@@ -36,7 +37,7 @@ fn test_available_bytes() {
 #[test]
 fn test_basic_malloc() {
     // alloc a min block
-    with_allocator(HEAP_SIZE, |mut allocator| {
+    with_allocator(HEAP_SIZE, LEAF_SIZE, |mut allocator| {
         let p = allocator.malloc(512);
         let p_addr = p as usize;
         assert!(!p.is_null());
@@ -49,13 +50,13 @@ fn test_basic_malloc() {
 
 #[test]
 fn test_multiple_malloc() {
-    with_allocator(HEAP_SIZE, |mut allocator| {
+    with_allocator(HEAP_SIZE, LEAF_SIZE, |mut allocator| {
         let mut available_bytes = allocator.available_bytes();
         let mut count = 0;
         // alloc serveral sized blocks
         while available_bytes >= LEAF_SIZE {
             let k = first_down_k(available_bytes - 1).unwrap_or_default();
-            let bytes = block_size(k);
+            let bytes = block_size(k, LEAF_SIZE);
             assert!(!allocator.malloc(bytes).is_null());
             available_bytes -= bytes;
             count += 1;
@@ -66,7 +67,7 @@ fn test_multiple_malloc() {
 
 #[test]
 fn test_small_size_malloc() {
-    with_allocator(HEAP_SIZE, |mut allocator| {
+    with_allocator(HEAP_SIZE, LEAF_SIZE, |mut allocator| {
         let mut available_bytes = allocator.available_bytes();
         while available_bytes >= LEAF_SIZE {
             assert!(!allocator.malloc(LEAF_SIZE).is_null());
@@ -81,7 +82,7 @@ fn test_small_size_malloc() {
 fn test_fail_malloc() {
     // not enough memory since we only have HEAP_SIZE bytes,
     // and the allocator itself occupied few bytes
-    with_allocator(HEAP_SIZE, |mut allocator| {
+    with_allocator(HEAP_SIZE, LEAF_SIZE, |mut allocator| {
         let p = allocator.malloc(HEAP_SIZE);
         assert!(p.is_null());
     });
@@ -90,14 +91,14 @@ fn test_fail_malloc() {
 #[test]
 fn test_malloc_and_free() {
     fn _test_malloc_and_free(times: usize, heap_size: usize) {
-        with_allocator(heap_size, |mut allocator| {
+        with_allocator(heap_size, LEAF_SIZE, |mut allocator| {
             for _i in 0..times {
                 let mut available_bytes = allocator.available_bytes();
                 let mut ptrs = Vec::new();
                 // alloc serveral sized blocks
                 while available_bytes >= LEAF_SIZE {
                     let k = first_down_k(available_bytes - 1).unwrap_or_default();
-                    let bytes = block_size(k);
+                    let bytes = block_size(k, LEAF_SIZE);
                     let p = allocator.malloc(bytes);
                     assert!(!p.is_null());
                     ptrs.push(p);
@@ -120,7 +121,7 @@ fn test_malloc_and_free() {
 
 #[test]
 fn test_free_bug() {
-    with_allocator(HEAP_SIZE, |mut allocator| {
+    with_allocator(HEAP_SIZE, LEAF_SIZE, |mut allocator| {
         let p1 = allocator.malloc(32);
         allocator.free(p1);
         let p2 = allocator.malloc(4096);
