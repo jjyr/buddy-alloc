@@ -373,7 +373,8 @@ impl BuddyAlloc {
     /// block index of p under k
     fn block_index(&self, k: usize, p: *const u8) -> usize {
         if (p as usize) < self.base_addr {
-            panic!("hehe");
+            // TODO handle this outside
+            panic!("out of memory");
         }
         let n = p as usize - self.base_addr;
         let index = n / block_size(k, self.leaf_size);
