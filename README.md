@@ -2,7 +2,7 @@
 [![Crates.io](https://img.shields.io/crates/v/buddy-alloc.svg)](https://crates.io/crates/buddy-alloc)
 
 
-Buddy-alloc is a Rust implemented allocator, used for embedded environments.
+Buddy-alloc is a memory allocator for no-std Rust, used for embedded environments.
 
 ## Usage
 
@@ -10,7 +10,9 @@ Check [examples](https://github.com/jjyr/buddy-alloc/tree/master/examples) and [
 
 ## Why
 
-I want to use the `alloc` crate in the CKB-VM(an embedded-like environment) without introducing libc; to implement a pure Rust memory allocator comes to my head, buddy memory allocation is simple and efficient enough for my use case, it may be used in other similar embedded environments.
+My original intention is to enable `alloc` crate for no-std Rust in CKB-VM without introducing LibC.
+I choose the buddy allocation algorithm since it's simple, efficient enough, and It's easy to extended or composited with other memory allocation strategies.
+This crate is designed to be used in general environment, it should be able to used in similar embedded environments.
 
 ## License
 

@@ -5,7 +5,7 @@ authors = ["jjy <jjyruby@gmail.com>"]
 edition = "2018"
 license = "MIT"
 repository = "https://github.com/jjyr/buddy-alloc"
-description = "Buddy-alloc is a Rust implemented allocator, used for embedded environments."
+description = "Buddy-alloc is a memory allocator for no-std Rust, used for embedded environments."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
