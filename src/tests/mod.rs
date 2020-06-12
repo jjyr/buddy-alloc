@@ -130,3 +130,28 @@ fn test_free_bug() {
         allocator.free(p3);
     });
 }
+
+#[test]
+fn test_example_bug() {
+    // simulate example bug
+    with_allocator(HEAP_SIZE, LEAF_SIZE, |mut allocator| {
+        let mut ptrs = Vec::new();
+        ptrs.push(allocator.malloc(4));
+        ptrs.push(allocator.malloc(5));
+        allocator.free(ptrs[0]);
+        ptrs.push(allocator.malloc(40));
+        ptrs.push(allocator.malloc(48));
+        ptrs.push(allocator.malloc(80));
+        ptrs.push(allocator.malloc(42));
+        ptrs.push(allocator.malloc(13));
+        ptrs.push(allocator.malloc(8));
+        ptrs.push(allocator.malloc(24));
+        ptrs.push(allocator.malloc(16));
+        ptrs.push(allocator.malloc(1024));
+        ptrs.push(allocator.malloc(104));
+        ptrs.push(allocator.malloc(8));
+        for i in 1..ptrs.len() {
+            allocator.free(ptrs[i]);
+        }
+    });
+}

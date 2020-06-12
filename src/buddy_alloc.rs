@@ -84,13 +84,15 @@ impl BuddyList {
 
     fn remove(list: *mut BuddyList) {
         unsafe {
+            debug_assert!(!(*list).prev.is_null());
+            debug_assert!(!(*list).next.is_null());
             (*(*list).prev).next = (*list).next;
             (*(*list).next).prev = (*list).prev;
         }
     }
 
     fn pop(list: *mut BuddyList) -> *mut BuddyList {
-        assert!(!Self::is_empty(list));
+        debug_assert!(!Self::is_empty(list));
         let n_list: *mut BuddyList = unsafe { (*list).next };
         Self::remove(n_list);
         n_list
