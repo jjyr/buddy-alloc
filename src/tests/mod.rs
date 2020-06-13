@@ -132,6 +132,55 @@ fn test_free_bug() {
 }
 
 #[test]
+fn test_malloc_and_free_gap() {
+    // malloc 1 k and 2 k alternately, then consumes remain memory
+    // this test ensures that lazy_init function align the memory correctly.
+    fn _test_malloc_and_free_gap(times: usize, heap_size: usize) {
+        with_allocator(heap_size, LEAF_SIZE, |mut allocator| {
+            let blocks_num = heap_size / LEAF_SIZE;
+            
+            for _i in 0..times {
+                let mut available_bytes = allocator.available_bytes();
+                let mut ptrs = Vec::new();
+                for _j in 0.. blocks_num / 2 {
+                    // alloc 1 k block
+                    let bytes = (block_size(1, LEAF_SIZE) >> 1) + 1;
+                    let p = allocator.malloc(bytes);
+                    assert!(!p.is_null());
+                    ptrs.push(p);
+                    available_bytes -= bytes;
+                    // alloc 2 k block
+                    let bytes = (block_size(2, LEAF_SIZE) >> 1) + 1;
+                    let p = allocator.malloc(bytes);
+                    assert!(!p.is_null());
+                    ptrs.push(p);
+                    available_bytes -= bytes;
+                }
+                for _j in 0 .. blocks_num / 2 {
+                    // alloc 1 k block
+                    let bytes = (block_size(1, LEAF_SIZE) >> 1) + 1;
+                    let p = allocator.malloc(bytes);
+                    assert!(!p.is_null());
+                    ptrs.push(p);
+                    available_bytes -= bytes;
+                }
+                // space is drained
+                assert!(available_bytes == 0);
+                assert!(allocator.malloc(1).is_null());
+                // free allocated blocks
+                for ptr in ptrs {
+                    allocator.free(ptr);
+                }
+            }
+        });
+    }
+    // test with heaps: 1M, 2M, 4M, 8M
+    for i in &[1, 2, 4, 8] {
+        _test_malloc_and_free_gap(10, i * HEAP_SIZE);
+    }
+}
+
+#[test]
 fn test_example_bug() {
     // simulate example bug
     with_allocator(HEAP_SIZE, LEAF_SIZE, |mut allocator| {
