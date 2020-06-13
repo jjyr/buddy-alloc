@@ -247,6 +247,15 @@ impl BuddyAlloc {
             let block_size = (1 << align_k) * self.leaf_size;
             while block_size <= gap_size {
                 gap_size -= block_size;
+                let p = (self.initialized_addr + gap_size) as *mut u8;
+                let entry = self.entry(align_k);
+                let block_index = self.block_index(align_k, p);
+                bit_clear(entry.alloc, block_index);
+                let parent_entry = self.entry(align_k + 1);
+                let parent_block_index = self.block_index(align_k + 1, p);
+                bit_set(parent_entry.split, parent_block_index);
+                dbg!("free gap", align_k, block_index, block_size, p);
+                self.free(p);
             }
         }
 
@@ -274,6 +283,7 @@ impl BuddyAlloc {
     }
 
     pub fn malloc(&mut self, nbytes: usize) -> *mut u8 {
+        dbg!("malloc", nbytes);
         let (fk, rounded_size) = first_up_k(nbytes, self.leaf_size);
 
         // always try lazy init first, since its effecient
@@ -295,6 +305,7 @@ impl BuddyAlloc {
             let q: *mut u8 = (p as usize + block_size(k - 1, self.leaf_size)) as *mut u8;
             bit_set(self.entry(k).split, self.block_index(k, p));
             bit_set(self.entry(k - 1).alloc, self.block_index(k - 1, p));
+            dbg!(k - 1, self.block_index(k - 1, q));
             debug_assert!(!bit_isset(
                 self.entry(k - 1).alloc,
                 self.block_index(k - 1, q)
@@ -302,17 +313,16 @@ impl BuddyAlloc {
             BuddyList::push(self.entry(k - 1).free, q);
             k -= 1;
         }
-        //dbg!("malloc", k, self.block_index(k, p));
+        dbg!("malloc return", k, self.block_index(k, p));
         p
     }
 
     pub fn free(&mut self, mut p: *mut u8) {
         let mut k = self.block_k(p);
-            //dbg!("free start", k, p );
+        dbg!("free begin", k, p );
         while k < (self.entries_size - 1) {
             let block_index = self.block_index(k, p);
             let entry = self.entry(k);
-            //dbg!("free", k, block_index, p );
             bit_clear(entry.alloc, block_index);
             let buddy = if block_index % 2 == 0 {
                 block_index + 1
@@ -347,7 +357,7 @@ impl BuddyAlloc {
                 break;
             }
 
-            //dbg!("remove", q, k, buddy, bit_isset(entry.alloc, buddy), k + 1, parent_block_index, (p, k, block_index));
+            dbg!("merge", k, block_index, q, buddy, k + 1, parent_block_index);
             // we can safely merge buddy
             // remove buddy from free list
             BuddyList::remove(q.cast::<BuddyList>());
@@ -360,6 +370,7 @@ impl BuddyAlloc {
             // move to next k
             k += 1;
         }
+        dbg!("merge result", k, p);
         debug_assert!(!bit_isset(self.entry(k).alloc, self.block_index(k, p)));
         BuddyList::push(self.entry(k).free, p);
     }
