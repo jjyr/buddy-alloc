@@ -19,7 +19,10 @@ const fn nblock(k: usize, entries_size: usize) -> usize {
     1 << (entries_size - k - 1)
 }
 
-const fn roundup(n: usize, sz: usize) -> usize {
+fn roundup(n: usize, sz: usize) -> usize {
+    if n == 0 {
+        return 0;
+    }
     ((n - 1) / sz + 1) * sz
 }
 
@@ -49,7 +52,7 @@ fn bit_set(bit_array: *mut u8, i: usize) {
 }
 
 fn bit_clear(bit_array: *mut u8, i: usize) {
-    debug_assert!(bit_isset(bit_array, i));
+    //debug_assert!(bit_isset(bit_array, i));
     unsafe {
         let b = bit_array.add(i / 8);
         let m = 1 << (i % 8);
@@ -192,7 +195,7 @@ impl BuddyAlloc {
             let entry = entries.add(k).as_mut().expect("entry");
             entry.alloc = base_addr as *mut u8;
             // mark all blocks as allocated
-            core::ptr::write_bytes(entry.alloc, 0, used_bytes);
+            core::ptr::write_bytes(entry.alloc, 255, used_bytes);
             base_addr += used_bytes;
         }
 
@@ -203,6 +206,7 @@ impl BuddyAlloc {
             debug_assert!(len >= used_bytes, OOM_MSG);
             let entry = entries.add(k).as_mut().expect("entry");
             entry.split = base_addr as *mut u8;
+            // mark all blocks as not splited
             core::ptr::write_bytes(entry.split, 0, used_bytes);
             base_addr += used_bytes;
         }
@@ -234,25 +238,39 @@ impl BuddyAlloc {
         let k = log2(size / self.leaf_size);
         debug_assert_eq!((1 << k) * self.leaf_size, size);
 
+        // align initialized_addr to n times size
+        let initialized_len = self.initialized_addr - self.base_addr;
+        let rounded_len = roundup(initialized_len, size);
+
+        let mut gap_size = rounded_len - initialized_len;
+        let mut align_k = k;
+        while gap_size > 0 {
+            align_k -= 1;
+            let block_size = (1 << align_k) * self.leaf_size;
+            while block_size <= gap_size {
+                gap_size -= block_size;
+            }
+        }
+
+        self.initialized_addr = self.base_addr + rounded_len;
+
         // mark allocated memory block as alloced
         let entry = self.entry(k);
         let parent_entry = self.entry(k + 1);
-        debug_assert!(!bit_isset(
-            entry.alloc,
-            self.block_index(k, self.initialized_addr as *const u8)
-        ));
-        // mark block and parent's block as alloced but not splited,
-        // which means the block can't merge to parent in the `free`.
+        // mark block as allocated
         let block_index = self.block_index(k, self.initialized_addr as *const u8);
         let parent_block_index = self.block_index(k + 1, self.initialized_addr as *const u8);
+        //dbg!("set alloc", k, block_index);
         bit_set(entry.alloc, block_index);
-        bit_set(parent_entry.alloc, parent_block_index);
-        if block_index % 2 != 0 {
-            // since the buddy is already allocated, we can set split bit
+         ////dbg!("set parent alloc", k + 1, parent_block_index);
+        // bit_set(parent_entry.alloc, parent_block_index);
+        //if block_index % 2 != 0 {
+            // mark parent's block as splited,
             bit_set(parent_entry.split, parent_block_index);
-        }
+        //}
 
         let p = self.initialized_addr as *mut u8;
+            //dbg!("lazy alloc", k + 1, parent_block_index, p, k, block_index);
         self.initialized_addr += size;
         p
     }
@@ -286,14 +304,17 @@ impl BuddyAlloc {
             BuddyList::push(self.entry(k - 1).free, q);
             k -= 1;
         }
+        //dbg!("malloc", k, self.block_index(k, p));
         p
     }
 
     pub fn free(&mut self, mut p: *mut u8) {
         let mut k = self.block_k(p);
+            //dbg!("free start", k, p );
         while k < (self.entries_size - 1) {
             let block_index = self.block_index(k, p);
             let entry = self.entry(k);
+            //dbg!("free", k, block_index, p );
             bit_clear(entry.alloc, block_index);
             let buddy = if block_index % 2 == 0 {
                 block_index + 1
@@ -301,14 +322,21 @@ impl BuddyAlloc {
                 block_index - 1
             };
 
+
+            // calculate parent block index
+            let q = self.block_ptr(k, buddy);
+
+            // buddy is uninitialized
+            //dbg!("check buddy initialized", k, buddy,q, unsafe{self.initialized_addr as *mut u8}, q as usize >= self.initialized_addr);
+            if q as usize + block_size(k, self.leaf_size) > self.initialized_addr {
+                break;
+            }
+
             // merge with buddy if buddy is not alloced and parent is split
-            let parent_entry = self.entry(k + 1);
             if bit_isset(entry.alloc, buddy) {
                 break;
             }
 
-            // calculate parent block index
-            let q = self.block_ptr(k, buddy);
             let parent_block_index = if block_index % 2 == 0 {
                 self.block_index(k + 1, p)
             } else {
@@ -316,10 +344,12 @@ impl BuddyAlloc {
             };
 
             // if parent is not splited, which implies parent is not initialized, then stop merge
+            let parent_entry = self.entry(k + 1);
             if !bit_isset(parent_entry.split, parent_block_index) {
                 break;
             }
 
+            //dbg!("remove", q, k, buddy, bit_isset(entry.alloc, buddy), k + 1, parent_block_index, (p, k, block_index));
             // we can safely merge buddy
             // remove buddy from free list
             BuddyList::remove(q.cast::<BuddyList>());
@@ -352,11 +382,10 @@ impl BuddyAlloc {
     fn block_k(&self, p: *const u8) -> usize {
         for k in 0..(self.entries_size - 1) {
             // if bit_isset(self.entry(k + 1).split, self.block_index(k + 1, p)) {
-            //     debug_assert!(bit_isset(self.entry(k).alloc, self.block_index(k, p)));
+            //     // debug_assert!(bit_isset(self.entry(k).alloc, self.block_index(k, p)));
             //     return k;
             // }
             if bit_isset(self.entry(k).alloc, self.block_index(k, p)) {
-                debug_assert!(bit_isset(self.entry(k).alloc, self.block_index(k, p)));
                 return k;
             }
         }
