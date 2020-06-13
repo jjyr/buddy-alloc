@@ -4,8 +4,6 @@
 //!
 //! The idea to to initialize base..end memory to leaf size, then merge them up.
 
-#![allow(clippy::needless_range_loop)]
-
 const OOM_MSG: &str = "requires more memory space to initialize BuddyAlloc";
 const LEAF_ALIGN_ERROR_MSG: &str = "leaf size must be align to 16 bytes";
 /// required align to 16 bytes, since BuddyList takes 16 bytes on 64-bits machine.
@@ -381,13 +379,13 @@ impl BuddyAlloc {
     /// find k of p
     fn block_k(&self, p: *const u8) -> usize {
         for k in 0..(self.entries_size - 1) {
-            // if bit_isset(self.entry(k + 1).split, self.block_index(k + 1, p)) {
-            //     // debug_assert!(bit_isset(self.entry(k).alloc, self.block_index(k, p)));
-            //     return k;
-            // }
-            if bit_isset(self.entry(k).alloc, self.block_index(k, p)) {
+            if bit_isset(self.entry(k + 1).split, self.block_index(k + 1, p)) {
+                // debug_assert!(bit_isset(self.entry(k).alloc, self.block_index(k, p)));
                 return k;
             }
+            // if bit_isset(self.entry(k).alloc, self.block_index(k, p)) {
+            //     return k;
+            // }
         }
         0
     }
