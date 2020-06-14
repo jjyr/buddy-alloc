@@ -282,7 +282,7 @@ impl BuddyAlloc {
     }
 
     pub fn free(&mut self, mut p: *mut u8) {
-        let mut k = self.block_k(p);
+        let mut k = self.find_k_for_p(p);
         while k < (self.entries_size - 1) {
             let block_index = self.block_index(k, p);
             bit_clear(self.entry(k).alloc, block_index);
@@ -321,8 +321,8 @@ impl BuddyAlloc {
         unsafe { self.entries.add(i).as_ref().expect("entry") }
     }
 
-    /// find k of p
-    fn block_k(&self, p: *const u8) -> usize {
+    /// find k for p
+    fn find_k_for_p(&self, p: *const u8) -> usize {
         for k in 0..(self.entries_size - 1) {
             if bit_isset(self.entry(k + 1).split, self.block_index(k + 1, p)) {
                 debug_assert!(bit_isset(self.entry(k).alloc, self.block_index(k, p)));
