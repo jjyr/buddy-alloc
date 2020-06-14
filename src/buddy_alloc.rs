@@ -8,7 +8,7 @@
 
 const OOM_MSG: &str = "requires more memory space to initialize BuddyAlloc";
 const LEAF_ALIGN_ERROR_MSG: &str = "leaf size must be align to 16 bytes";
-/// required align to 16 bytes, since BuddyList takes 16 bytes on 64-bits machine.
+/// required align to 16 bytes, since Node takes 16 bytes on 64-bits machine.
 pub const MIN_LEAF_SIZE_ALIGN: usize = 16;
 
 pub const fn block_size(k: usize, leaf_size: usize) -> usize {
@@ -69,69 +69,37 @@ pub fn first_up_k(n: usize, leaf_size: usize) -> usize {
     k
 }
 
-struct BuddyList {
-    next: *mut BuddyList,
-    prev: *mut BuddyList,
+struct Node {
+    next: *mut Node,
+    prev: *mut Node,
 }
 
-impl core::fmt::Debug for BuddyList {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "BuddyList {{ ")?;
-        if Self::is_empty(self as *const BuddyList) {
-            write!(f, "empty")?;
-        } else {
-            let mut count = 0;
-            let mut p = self as *const BuddyList;
-            while count == 0 || p != self as *const BuddyList {
-                unsafe {
-                    write!(
-                        f,
-                        "item({}, self: {:?}, next: {:?}, prev: {:?}) ",
-                        count,
-                        p,
-                        (*p).next,
-                        (*p).prev
-                    )?;
-                }
-                count += 1;
-                p = unsafe { (*p).next };
-
-                if count > 10 {
-                    write!(f, "items...")?;
-                    break;
-                }
-            }
-        }
-        write!(f, " }}")
-    }
-}
-
-impl BuddyList {
-    fn init(list: *mut BuddyList) {
+impl Node {
+    fn init(list: *mut Node) {
         unsafe {
             (*list).next = list;
             (*list).prev = list;
         }
     }
 
-    fn remove(list: *mut BuddyList) {
+    fn remove(list: *mut Node) {
         unsafe {
             (*(*list).prev).next = (*list).next;
             (*(*list).next).prev = (*list).prev;
         }
     }
 
-    fn pop(list: *mut BuddyList) -> *mut BuddyList {
-        assert!(!Self::is_empty(list));
-        let n_list: *mut BuddyList = unsafe { (*list).next };
+    fn pop(list: *mut Node) -> *mut Node {
+        debug_assert!(!Self::is_empty(list));
+        let n_list: *mut Node = unsafe { (*list).next };
         Self::remove(n_list);
         n_list
     }
 
-    fn push(list: *mut BuddyList, p: *mut u8) {
-        let p = p.cast::<BuddyList>();
+    fn push(list: *mut Node, p: *mut u8) {
+        let p = p.cast::<Node>();
         unsafe {
-            let n_list: BuddyList = BuddyList {
+            let n_list: Node = Node {
                 prev: list,
                 next: (*list).next,
             };
@@ -141,13 +109,13 @@ impl BuddyList {
         }
     }
 
-    fn is_empty(list: *const BuddyList) -> bool {
-        unsafe { (*list).next as *const BuddyList == list }
+    fn is_empty(list: *const Node) -> bool {
+        unsafe { (*list).next as *const Node == list }
     }
 }
 
 struct Entry {
-    free: *mut BuddyList,
+    free: *mut Node,
     /// Bit array to keep tracking alloc
     alloc: *mut u8,
     /// Bit array to keep tracking split
@@ -198,19 +166,19 @@ impl BuddyAlloc {
 
         // alloc buddy allocator memory
         let used_bytes = core::mem::size_of::<Entry>() * entries_size;
-        assert!(end_addr >= base_addr + used_bytes, OOM_MSG);
+        debug_assert!(end_addr >= base_addr + used_bytes, OOM_MSG);
         let entries = base_addr as *mut Entry;
         base_addr += used_bytes;
 
-        let buddy_list_size = core::mem::size_of::<BuddyList>();
+        let buddy_list_size = core::mem::size_of::<Node>();
         // init entries free
         for k in 0..entries_size {
             // use one bit for per memory block
-            assert!(end_addr >= base_addr + buddy_list_size, OOM_MSG);
+            debug_assert!(end_addr >= base_addr + buddy_list_size, OOM_MSG);
             let entry = entries.add(k).as_mut().expect("entry");
-            entry.free = base_addr as *mut BuddyList;
+            entry.free = base_addr as *mut Node;
             core::ptr::write_bytes(entry.free, 0, buddy_list_size);
-            BuddyList::init(entry.free);
+            Node::init(entry.free);
             base_addr += buddy_list_size;
         }
 
@@ -218,7 +186,7 @@ impl BuddyAlloc {
         for k in 0..entries_size {
             // use one bit for per memory block
             let used_bytes = roundup(nblock(k, entries_size), 8) / 8;
-            assert!(end_addr >= base_addr + used_bytes, OOM_MSG);
+            debug_assert!(end_addr >= base_addr + used_bytes, OOM_MSG);
             let entry = entries.add(k).as_mut().expect("entry");
             entry.alloc = base_addr as *mut u8;
             // mark all blocks as allocated
@@ -230,7 +198,7 @@ impl BuddyAlloc {
         for k in 1..entries_size {
             // use one bit for per memory block
             let used_bytes = roundup(nblock(k, entries_size), 8) / 8;
-            assert!(end_addr >= base_addr + used_bytes, OOM_MSG);
+            debug_assert!(end_addr >= base_addr + used_bytes, OOM_MSG);
             let entry = entries.add(k).as_mut().expect("entry");
             entry.split = base_addr as *mut u8;
             core::ptr::write_bytes(entry.split, 0, used_bytes);
@@ -268,7 +236,7 @@ impl BuddyAlloc {
                     entry.alloc,
                     self.block_index(k, base_addr as *const u8)
                 ));
-                BuddyList::push(entry.free, base_addr as *mut u8);
+                Node::push(entry.free, base_addr as *mut u8);
                 // mark parent's split and alloc
                 let block_index = self.block_index(k, base_addr as *const u8);
                 if block_index % 2 == 0 {
@@ -284,7 +252,7 @@ impl BuddyAlloc {
             // mark unavailable blocks as allocated
             let n = nblock(k, entries_size);
             let unavailable_block_index = self.block_index(k, base_addr as *const u8);
-            assert!(unavailable_block_index < n);
+            debug_assert!(unavailable_block_index < n);
             bit_set(entry.alloc, unavailable_block_index);
         }
 
@@ -293,12 +261,11 @@ impl BuddyAlloc {
 
     pub fn malloc(&mut self, nbytes: usize) -> *mut u8 {
         let fk = first_up_k(nbytes, self.leaf_size);
-        let mut k =
-            match (fk..self.entries_size).find(|&k| !BuddyList::is_empty(self.entry(k).free)) {
-                Some(k) => k,
-                None => return core::ptr::null_mut(),
-            };
-        let p: *mut u8 = BuddyList::pop(self.entry(k).free) as *mut u8;
+        let mut k = match (fk..self.entries_size).find(|&k| !Node::is_empty(self.entry(k).free)) {
+            Some(k) => k,
+            None => return core::ptr::null_mut(),
+        };
+        let p: *mut u8 = Node::pop(self.entry(k).free) as *mut u8;
         bit_set(self.entry(k).alloc, self.block_index(k, p));
         while k > fk {
             let q: *mut u8 = (p as usize + block_size(k - 1, self.leaf_size)) as *mut u8;
@@ -308,7 +275,7 @@ impl BuddyAlloc {
                 self.entry(k - 1).alloc,
                 self.block_index(k - 1, q)
             ));
-            BuddyList::push(self.entry(k - 1).free, q);
+            Node::push(self.entry(k - 1).free, q);
             k -= 1;
         }
         p
@@ -333,7 +300,7 @@ impl BuddyAlloc {
             // 3. repeat for k = k + 1 until reach MAX_K
             // 4. push p back to k entry free list
             let q = self.block_addr(k, buddy);
-            BuddyList::remove(q as *mut BuddyList);
+            Node::remove(q as *mut Node);
             if buddy % 2 == 0 {
                 p = q as *mut u8;
             }
@@ -341,7 +308,7 @@ impl BuddyAlloc {
             k += 1;
         }
         debug_assert!(!bit_isset(self.entry(k).alloc, self.block_index(k, p)));
-        BuddyList::push(self.entry(k).free, p);
+        Node::push(self.entry(k).free, p);
     }
 
     /// available bytes
@@ -350,12 +317,7 @@ impl BuddyAlloc {
     }
 
     fn entry(&self, i: usize) -> &Entry {
-        if i >= self.entries_size {
-            panic!(
-                "index out of range, len: {} index: {}",
-                self.entries_size, i
-            );
-        }
+        debug_assert!(i < self.entries_size, "index out of range");
         unsafe { self.entries.add(i).as_ref().expect("entry") }
     }
 
