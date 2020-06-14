@@ -249,7 +249,7 @@ impl BuddyAlloc {
         while gap_size > 0 {
             align_k -= 1;
             let block_size = (1 << align_k) * self.leaf_size;
-            while block_size <= gap_size {
+            if block_size <= gap_size {
                 gap_size -= block_size;
                 let p = (self.initialized_addr + gap_size) as *mut u8;
                 let entry = self.entry(align_k);
