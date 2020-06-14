@@ -130,3 +130,86 @@ fn test_free_bug() {
         allocator.free(p3);
     });
 }
+
+#[test]
+fn test_malloc_and_free_gap() {
+    // malloc 1 k and 2 k alternately, then consumes remain memory
+    fn _test_malloc_and_free_gap(times: usize, heap_size: usize, leaf_size: usize) {
+        with_allocator(heap_size, leaf_size, |mut allocator| {
+            let blocks_num = allocator.available_bytes() / leaf_size;
+
+            for _i in 0..times {
+                let mut available_bytes = allocator.available_bytes();
+                let mut ptrs = Vec::new();
+                // align blocks to n times of 4
+                for _j in 0..blocks_num / 4 {
+                    // alloc 1 k block
+                    let bytes = block_size(1, leaf_size) >> 1;
+                    let p = allocator.malloc(bytes);
+                    assert!(!p.is_null());
+                    ptrs.push(p);
+                    available_bytes -= bytes;
+                    // alloc 2 k block
+                    let bytes = block_size(2, leaf_size) >> 1;
+                    let p = allocator.malloc(bytes);
+                    assert!(!p.is_null());
+                    ptrs.push(p);
+                    available_bytes -= bytes;
+                }
+
+                for _j in 0..blocks_num / 4 {
+                    // alloc 1 k block
+                    let bytes = block_size(1, leaf_size) >> 1;
+                    let p = allocator.malloc(bytes);
+                    assert!(!p.is_null());
+                    ptrs.push(p);
+                    available_bytes -= bytes;
+                }
+                // calculate remain blocks
+                let remain_blocks = blocks_num - blocks_num / 4 * 4;
+                assert_eq!(available_bytes, remain_blocks * leaf_size);
+                // space is drained
+                for _ in 0..remain_blocks {
+                    let p = allocator.malloc(leaf_size);
+                    assert!(!p.is_null());
+                    ptrs.push(p);
+                }
+                assert!(allocator.malloc(1).is_null());
+                // free allocated blocks
+                for ptr in ptrs {
+                    allocator.free(ptr);
+                }
+            }
+        });
+    }
+
+    // test with heaps: 1M, 2M, 4M, 8M
+    for i in &[1, 2, 4, 8] {
+        _test_malloc_and_free_gap(10, i * HEAP_SIZE, LEAF_SIZE);
+    }
+}
+
+#[test]
+fn test_example_bug() {
+    // simulate example bug
+    with_allocator(HEAP_SIZE, LEAF_SIZE, |mut allocator| {
+        let mut ptrs = Vec::new();
+        ptrs.push(allocator.malloc(4));
+        ptrs.push(allocator.malloc(5));
+        allocator.free(ptrs[0]);
+        ptrs.push(allocator.malloc(40));
+        ptrs.push(allocator.malloc(48));
+        ptrs.push(allocator.malloc(80));
+        ptrs.push(allocator.malloc(42));
+        ptrs.push(allocator.malloc(13));
+        ptrs.push(allocator.malloc(8));
+        ptrs.push(allocator.malloc(24));
+        ptrs.push(allocator.malloc(16));
+        ptrs.push(allocator.malloc(1024));
+        ptrs.push(allocator.malloc(104));
+        ptrs.push(allocator.malloc(8));
+        for ptr in ptrs.into_iter().skip(1) {
+            allocator.free(ptr);
+        }
+    });
+}
