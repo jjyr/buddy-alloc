@@ -142,7 +142,6 @@ fn test_malloc_and_free_gap() {
             for _i in 0..times {
                 let mut available_bytes = allocator.available_bytes();
                 let mut ptrs = Vec::new();
-                dbg!("phase 1", _i);
                 // align blocks to n times of 4
                 for _j in 0..blocks_num / 4 {
                     // alloc 1 k block
@@ -159,7 +158,6 @@ fn test_malloc_and_free_gap() {
                     available_bytes -= bytes;
                 }
 
-                dbg!("phase 2", _i);
                 for _j in 0..blocks_num / 4 {
                     // alloc 1 k block
                     let bytes = block_size(1, leaf_size) >> 1;
@@ -168,11 +166,9 @@ fn test_malloc_and_free_gap() {
                     ptrs.push(p);
                     available_bytes -= bytes;
                 }
-                dbg!("remain", _i);
                 // calculate remain blocks
                 let remain_blocks = blocks_num - blocks_num / 4 * 4;
                 assert_eq!(available_bytes, remain_blocks * leaf_size);
-                dbg!(available_bytes, remain_blocks);
                 // space is drained
                 for _ in 0..remain_blocks {
                     let p = allocator.malloc(leaf_size);
@@ -184,7 +180,6 @@ fn test_malloc_and_free_gap() {
                 for ptr in ptrs {
                     allocator.free(ptr);
                 }
-                dbg!(remain_blocks);
                 assert!(allocator.is_top_k_merged());
             }
         });
