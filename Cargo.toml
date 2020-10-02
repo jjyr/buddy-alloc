@@ -15,5 +15,5 @@ description = "Buddy-alloc is a memory allocator for no-std Rust, used for embed
 criterion = "0.3"
 
 [[bench]]
-name = "alloc"
+name = "buddy_alloc"
 harness = false

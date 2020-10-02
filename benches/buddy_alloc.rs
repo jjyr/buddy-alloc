@@ -3,16 +3,17 @@ extern crate criterion;
 
 use criterion::{Criterion, Throughput};
 
-use buddy_alloc::buddy_alloc::BuddyAlloc;
+use buddy_alloc::buddy_alloc::{BuddyAlloc, BuddyAllocParam};
 
-const HEAP_SIZE: usize = 64 * 1024 * 1024;
+const HEAP_SIZE: usize = 64 * 1024 * 1024; // 64 MB
 const ALLOC_SIZE: usize = 32 * 1024 * 1024;
 const LEAF_SIZE: usize = 16;
 
 fn with_allocator<F: FnOnce(BuddyAlloc)>(f: F) {
     let buf: Vec<u8> = Vec::with_capacity(HEAP_SIZE);
     unsafe {
-        let allocator = BuddyAlloc::new(buf.as_ptr(), HEAP_SIZE, LEAF_SIZE);
+        let param = BuddyAllocParam::new(buf.as_ptr(), HEAP_SIZE, LEAF_SIZE);
+        let allocator = BuddyAlloc::new(param);
         f(allocator);
     }
 }

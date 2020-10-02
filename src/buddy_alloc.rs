@@ -135,6 +135,23 @@ impl Default for Entry {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct BuddyAllocParam {
+    base_addr: *const u8,
+    len: usize,
+    leaf_size: usize,
+}
+
+impl BuddyAllocParam {
+    pub const fn new(base_addr: *const u8, len: usize, leaf_size: usize) -> Self {
+        BuddyAllocParam {
+            base_addr,
+            len,
+            leaf_size,
+        }
+    }
+}
+
 pub struct BuddyAlloc {
     /// memory start addr
     base_addr: usize,
@@ -154,7 +171,12 @@ impl BuddyAlloc {
     /// The `base_addr..(base_addr + len)` must be allocated before using,
     /// and must guarantee no others write to the memory range, to avoid undefined behaviors.
     /// The new function panic if memory space not enough for initialize BuddyAlloc.
-    pub unsafe fn new(base_addr: *const u8, len: usize, leaf_size: usize) -> Self {
+    pub unsafe fn new(param: BuddyAllocParam) -> Self {
+        let BuddyAllocParam {
+            base_addr,
+            len,
+            leaf_size,
+        } = param;
         let mut base_addr = base_addr as usize;
         let end_addr = base_addr + len;
         assert!(
