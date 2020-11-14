@@ -137,12 +137,18 @@ impl Default for Entry {
 
 #[derive(Clone, Copy)]
 pub struct BuddyAllocParam {
+    /// Base addr: the start address
     base_addr: *const u8,
+    /// Len: available bytes from the start address
     len: usize,
+    /// Leaf size: the min size to allocate
     leaf_size: usize,
 }
 
 impl BuddyAllocParam {
+    /// Base addr: the start address
+    /// Len: available bytes from the start address
+    /// Leaf size: the min size to allocate
     pub const fn new(base_addr: *const u8, len: usize, leaf_size: usize) -> Self {
         BuddyAllocParam {
             base_addr,
@@ -234,6 +240,11 @@ impl BuddyAlloc {
         }
 
         assert!(end_addr >= base_addr, OOM_MSG);
+        debug_assert_eq!(
+            (base_addr << leaf2base) >> leaf2base,
+            base_addr,
+            "misalignment"
+        );
 
         let mut allocator = BuddyAlloc {
             base_addr,
@@ -302,6 +313,11 @@ impl BuddyAlloc {
             Node::push(parent_entry.free, q);
             k -= 1;
         }
+        debug_assert_eq!(
+            ((p as usize) << self.leaf2base) >> self.leaf2base,
+            p as usize,
+            "misalignment"
+        );
         p
     }
 
