@@ -239,9 +239,11 @@ impl BuddyAlloc {
             base_addr += used_bytes;
         }
 
+        // align base_addr to leaf size
+        base_addr = roundup(base_addr, leaf2base);
         assert!(end_addr >= base_addr, OOM_MSG);
         debug_assert_eq!(
-            (base_addr << leaf2base) >> leaf2base,
+            (base_addr >> leaf2base) << leaf2base,
             base_addr,
             "misalignment"
         );
@@ -314,7 +316,7 @@ impl BuddyAlloc {
             k -= 1;
         }
         debug_assert_eq!(
-            ((p as usize) << self.leaf2base) >> self.leaf2base,
+            ((p as usize) >> self.leaf2base) << self.leaf2base,
             p as usize,
             "misalignment"
         );

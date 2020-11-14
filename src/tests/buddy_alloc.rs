@@ -217,10 +217,10 @@ fn test_example_bug() {
 
 #[test]
 fn test_alignment() {
-    let data = [0u8; 4 << 10];
+    let data = [0u8; 4 << 16];
     println!("Buffer data: {:p}", data.as_ptr());
     let mut allocator =
-        unsafe { BuddyAlloc::new(BuddyAllocParam::new(data.as_ptr(), 4 << 10, 4096)) };
+        unsafe { BuddyAlloc::new(BuddyAllocParam::new(data.as_ptr(), 4 << 16, 4096)) };
     let p = allocator.malloc(4);
-    println!("Buffer data: {:p}", p);
+    println!("Allocated pointer: {:p}", p);
 }
