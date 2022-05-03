@@ -7,8 +7,8 @@
 #![allow(clippy::needless_range_loop)]
 
 const OOM_MSG: &str = "requires more memory space to initialize BuddyAlloc";
-const LEAF_ALIGN_ERROR_MSG: &str = "leaf size must be align to 16 bytes";
-/// required align to 16 bytes, since Node takes 16 bytes on 64-bits machine.
+const LEAF_ALIGN_ERROR_MSG: &str = "leaf size must be aligned to 16 bytes";
+/// required to align to 16 bytes, since Node takes 16 bytes on 64-bits machine.
 pub const MIN_LEAF_SIZE_ALIGN: usize = 16;
 
 pub const fn block_size(k: usize, leaf_size: usize) -> usize {
@@ -61,7 +61,7 @@ fn bit_clear(bit_array: *mut u8, i: usize) {
     }
 }
 
-// find a min k that great than n bytes
+// find a min k that is greater than n bytes
 pub fn first_up_k(n: usize, leaf_size: usize) -> usize {
     let mut k = 0;
     let mut size = leaf_size;
