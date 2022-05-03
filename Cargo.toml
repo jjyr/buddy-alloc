@@ -1,8 +1,8 @@
 [package]
 name = "buddy-alloc"
-version = "0.4.1"
+version = "0.5.0"
 authors = ["jjy <jjyruby@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "MIT"
 repository = "https://github.com/jjyr/buddy-alloc"
 description = "Buddy-alloc is a memory allocator for no-std Rust, used for embedded environments."
