@@ -1,2 +1,2 @@
 mod buddy_alloc;
-mod fast_alloc;
+mod freelist_alloc;

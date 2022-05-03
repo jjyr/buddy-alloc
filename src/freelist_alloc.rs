@@ -1,7 +1,7 @@
-//! Fast allocator
+//! Freelist allocator
 //! Optimized for fixed small memory block.
 
-// Fix size 64 Bytes
+/// Fixed size 64 Bytes, can't allocate more in one allocation.
 pub const BLOCK_SIZE: usize = 64;
 
 struct Node {
@@ -49,18 +49,18 @@ impl Node {
 }
 
 #[derive(Clone, Copy)]
-pub struct FastAllocParam {
+pub struct FreelistAllocParam {
     base_addr: *const u8,
     len: usize,
 }
 
-impl FastAllocParam {
+impl FreelistAllocParam {
     pub const fn new(base_addr: *const u8, len: usize) -> Self {
-        FastAllocParam { base_addr, len }
+        FreelistAllocParam { base_addr, len }
     }
 }
 
-pub struct FastAlloc {
+pub struct FreelistAlloc {
     /// memory start addr
     base_addr: usize,
     /// memory end addr
@@ -68,13 +68,13 @@ pub struct FastAlloc {
     free: *mut Node,
 }
 
-impl FastAlloc {
+impl FreelistAlloc {
     /// # Safety
     ///
-    /// The `base_addr..(base_addr + len)` must be allocated before using,
+    /// The `base_addr..(base_addr + len)` must be allocated before use,
     /// and must guarantee no others write to the memory range, otherwise behavior is undefined.
-    pub unsafe fn new(param: FastAllocParam) -> Self {
-        let FastAllocParam { base_addr, len } = param;
+    pub unsafe fn new(param: FreelistAllocParam) -> Self {
+        let FreelistAllocParam { base_addr, len } = param;
         let base_addr = base_addr as usize;
         let end_addr = base_addr + len;
         debug_assert_eq!(len % BLOCK_SIZE, 0);
@@ -91,7 +91,7 @@ impl FastAlloc {
             Node::push(free, addr as *mut u8);
         }
 
-        FastAlloc {
+        FreelistAlloc {
             base_addr,
             end_addr,
             free,

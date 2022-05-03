@@ -1,11 +1,11 @@
-use crate::fast_alloc::{FastAlloc, FastAllocParam, BLOCK_SIZE};
+use crate::freelist_alloc::{FreelistAlloc, FreelistAllocParam, BLOCK_SIZE};
 
-fn with_allocator<F: FnOnce(FastAlloc)>(f: F, buf: &[u8]) {
+fn with_allocator<F: FnOnce(FreelistAlloc)>(f: F, buf: &[u8]) {
     let allocator = unsafe {
         let addr = buf.as_ptr();
         let len = buf.len();
-        let param = FastAllocParam::new(addr, len);
-        FastAlloc::new(param)
+        let param = FreelistAllocParam::new(addr, len);
+        FreelistAlloc::new(param)
     };
     f(allocator);
 }
