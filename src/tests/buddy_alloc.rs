@@ -192,6 +192,7 @@ fn test_malloc_and_free_gap() {
 
 #[test]
 fn test_example_bug() {
+    #[allow(clippy::vec_init_then_push)]
     // simulate example bug
     with_allocator(HEAP_SIZE, LEAF_SIZE, |mut allocator| {
         let mut ptrs = Vec::new();
