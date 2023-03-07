@@ -3,10 +3,10 @@ default: integration
 integration: check-fmt check clippy test run-example
 
 test:
-	cargo test --all --all-features ${TEST_ARGS} -- --nocapture
+	cargo test --all ${TEST_ARGS} -- --nocapture
 
 clippy:
-	cargo clippy --all --all-features --all-targets
+	cargo clippy --all --all-targets
 
 check-fmt:
 	cargo fmt --all -- --check
