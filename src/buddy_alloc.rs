@@ -187,6 +187,7 @@ impl BuddyAlloc {
         let end_addr = base_addr + len;
         assert!(
             leaf_size % MIN_LEAF_SIZE_ALIGN == 0 && leaf_size != 0,
+            "{}",
             LEAF_ALIGN_ERROR_MSG
         );
         let leaf2base = log2(leaf_size);
@@ -198,7 +199,7 @@ impl BuddyAlloc {
 
         // alloc buddy allocator memory
         let used_bytes = core::mem::size_of::<Entry>() * entries_size;
-        debug_assert!(end_addr >= base_addr + used_bytes, OOM_MSG);
+        debug_assert!(end_addr >= base_addr + used_bytes, "{}", OOM_MSG);
         let entries = base_addr as *mut Entry;
         base_addr += used_bytes;
 
@@ -206,7 +207,7 @@ impl BuddyAlloc {
         // init entries free
         for k in 0..entries_size {
             // use one bit for per memory block
-            debug_assert!(end_addr >= base_addr + buddy_list_size, OOM_MSG);
+            debug_assert!(end_addr >= base_addr + buddy_list_size, "{}", OOM_MSG);
             let entry = entries.add(k).as_mut().expect("entry");
             entry.free = base_addr as *mut Node;
             core::ptr::write_bytes(entry.free, 0, buddy_list_size);
@@ -219,7 +220,7 @@ impl BuddyAlloc {
             // use one bit for per memory block
             // use shift instead `/`, 8 == 1 << 3
             let used_bytes = roundup(nblock(k, entries_size), 3) >> 3;
-            debug_assert!(end_addr >= base_addr + used_bytes, OOM_MSG);
+            debug_assert!(end_addr >= base_addr + used_bytes, "{}", OOM_MSG);
             let entry = entries.add(k).as_mut().expect("entry");
             entry.alloc = base_addr as *mut u8;
             // mark all blocks as allocated
@@ -232,7 +233,7 @@ impl BuddyAlloc {
             // use one bit for per memory block
             // use shift instead `/`, 8 == 1 << 3
             let used_bytes = roundup(nblock(k, entries_size), 3) >> 3;
-            debug_assert!(end_addr >= base_addr + used_bytes, OOM_MSG);
+            debug_assert!(end_addr >= base_addr + used_bytes, "{}", OOM_MSG);
             let entry = entries.add(k).as_mut().expect("entry");
             entry.split = base_addr as *mut u8;
             core::ptr::write_bytes(entry.split, 0, used_bytes);
@@ -241,7 +242,7 @@ impl BuddyAlloc {
 
         // align base_addr to leaf size
         base_addr = roundup(base_addr, leaf2base);
-        assert!(end_addr >= base_addr, OOM_MSG);
+        assert!(end_addr >= base_addr, "{}", OOM_MSG);
         debug_assert_eq!(
             (base_addr >> leaf2base) << leaf2base,
             base_addr,
