@@ -143,6 +143,9 @@ pub struct BuddyAllocParam {
     len: usize,
     /// Leaf size: the min size to allocate
     leaf_size: usize,
+    /// Zero filled: in many cases, provided address might already be zero filled,
+    /// in which case we can reduce re-filling zeros to the data again.
+    zero_filled: bool,
 }
 
 impl BuddyAllocParam {
@@ -154,6 +157,17 @@ impl BuddyAllocParam {
             base_addr,
             len,
             leaf_size,
+            zero_filled: false,
+        }
+    }
+
+    /// Similar to new, but provided buffer is already zero-filled elsewhere
+    pub const fn new_with_zero_filled(base_addr: *const u8, len: usize, leaf_size: usize) -> Self {
+        BuddyAllocParam {
+            base_addr,
+            len,
+            leaf_size,
+            zero_filled: true,
         }
     }
 }
@@ -182,6 +196,7 @@ impl BuddyAlloc {
             base_addr,
             len,
             leaf_size,
+            zero_filled,
         } = param;
         let mut base_addr = base_addr as usize;
         let end_addr = base_addr + len;
@@ -210,7 +225,9 @@ impl BuddyAlloc {
             debug_assert!(end_addr >= base_addr + buddy_list_size, "{}", OOM_MSG);
             let entry = entries.add(k).as_mut().expect("entry");
             entry.free = base_addr as *mut Node;
-            core::ptr::write_bytes(entry.free, 0, buddy_list_size);
+            if !zero_filled {
+                core::ptr::write_bytes(entry.free, 0, buddy_list_size);
+            }
             Node::init(entry.free);
             base_addr += buddy_list_size;
         }
@@ -224,7 +241,9 @@ impl BuddyAlloc {
             let entry = entries.add(k).as_mut().expect("entry");
             entry.alloc = base_addr as *mut u8;
             // mark all blocks as allocated
-            core::ptr::write_bytes(entry.alloc, 0, used_bytes);
+            if !zero_filled {
+                core::ptr::write_bytes(entry.alloc, 0, used_bytes);
+            }
             base_addr += used_bytes;
         }
 
@@ -236,7 +255,9 @@ impl BuddyAlloc {
             debug_assert!(end_addr >= base_addr + used_bytes, "{}", OOM_MSG);
             let entry = entries.add(k).as_mut().expect("entry");
             entry.split = base_addr as *mut u8;
-            core::ptr::write_bytes(entry.split, 0, used_bytes);
+            if !zero_filled {
+                core::ptr::write_bytes(entry.split, 0, used_bytes);
+            }
             base_addr += used_bytes;
         }
 
