@@ -4,6 +4,9 @@
 // Fix size 64 Bytes
 pub const BLOCK_SIZE: usize = 64;
 
+// By default, initialize 4 nodes at most
+pub const DEFAULT_INITIALIZED_NODES: usize = 4;
+
 struct Node {
     next: *mut Node,
     prev: *mut Node,
@@ -52,11 +55,28 @@ impl Node {
 pub struct FastAllocParam {
     base_addr: *const u8,
     len: usize,
+    initialized_nodes: usize,
 }
 
 impl FastAllocParam {
     pub const fn new(base_addr: *const u8, len: usize) -> Self {
-        FastAllocParam { base_addr, len }
+        FastAllocParam {
+            base_addr,
+            len,
+            initialized_nodes: DEFAULT_INITIALIZED_NODES,
+        }
+    }
+
+    pub const fn new_with_initialized_nodes(
+        base_addr: *const u8,
+        len: usize,
+        initialized_nodes: usize,
+    ) -> Self {
+        FastAllocParam {
+            base_addr,
+            len,
+            initialized_nodes,
+        }
     }
 }
 
@@ -65,6 +85,8 @@ pub struct FastAlloc {
     base_addr: usize,
     /// memory end addr
     end_addr: usize,
+    /// next addr to allocate nodes
+    next_addr: usize,
     free: *mut Node,
 }
 
@@ -74,19 +96,26 @@ impl FastAlloc {
     /// The `base_addr..(base_addr + len)` must be allocated before using,
     /// and must guarantee no others write to the memory range, otherwise behavior is undefined.
     pub unsafe fn new(param: FastAllocParam) -> Self {
-        let FastAllocParam { base_addr, len } = param;
-        let base_addr = base_addr as usize;
-        let end_addr = base_addr + len;
+        let FastAllocParam {
+            base_addr,
+            len,
+            initialized_nodes,
+        } = param;
+        let nblocks = len / BLOCK_SIZE;
         debug_assert_eq!(len % BLOCK_SIZE, 0);
 
-        let nblocks = len / BLOCK_SIZE;
+        let base_addr = base_addr as usize;
+        let end_addr = base_addr + nblocks * BLOCK_SIZE;
+
+        // Actual blocks to create here
+        let cblocks = core::cmp::min(nblocks, initialized_nodes);
 
         // initialize free list
         let free = base_addr as *mut Node;
         Node::init(free);
 
         let mut addr = base_addr;
-        for _ in 0..(nblocks - 1) {
+        for _ in 1..cblocks {
             addr += BLOCK_SIZE;
             Node::push(free, addr as *mut u8);
         }
@@ -94,6 +123,7 @@ impl FastAlloc {
         FastAlloc {
             base_addr,
             end_addr,
+            next_addr: addr + BLOCK_SIZE,
             free,
         }
     }
@@ -104,8 +134,18 @@ impl FastAlloc {
     }
 
     pub fn malloc(&mut self, nbytes: usize) -> *mut u8 {
-        if nbytes > BLOCK_SIZE || self.free.is_null() {
+        if nbytes > BLOCK_SIZE {
             return core::ptr::null_mut();
+        }
+
+        if self.free.is_null() {
+            if self.next_addr < self.end_addr {
+                let result = self.next_addr;
+                self.next_addr += BLOCK_SIZE;
+                return result as *mut u8;
+            } else {
+                return core::ptr::null_mut();
+            }
         }
 
         let is_last = Node::is_empty(self.free);

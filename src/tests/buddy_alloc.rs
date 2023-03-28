@@ -3,9 +3,17 @@ use crate::buddy_alloc::{block_size, BuddyAlloc, BuddyAllocParam, MIN_LEAF_SIZE_
 const HEAP_SIZE: usize = 1024 * 1024;
 const LEAF_SIZE: usize = MIN_LEAF_SIZE_ALIGN;
 
-fn with_allocator<F: FnOnce(BuddyAlloc)>(heap_size: usize, leaf_size: usize, f: F) {
+fn with_allocator<F: Fn(BuddyAlloc)>(heap_size: usize, leaf_size: usize, f: F) {
     let buf: Vec<u8> = Vec::with_capacity(heap_size);
     let param = BuddyAllocParam::new(buf.as_ptr(), heap_size, leaf_size);
+    unsafe {
+        let allocator = BuddyAlloc::new(param);
+        f(allocator);
+    }
+
+    let zero_filled_buf: Vec<u8> = vec![0; heap_size];
+    let param =
+        BuddyAllocParam::new_with_zero_filled(zero_filled_buf.as_ptr(), heap_size, leaf_size);
     unsafe {
         let allocator = BuddyAlloc::new(param);
         f(allocator);
