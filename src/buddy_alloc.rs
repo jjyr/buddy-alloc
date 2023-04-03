@@ -377,7 +377,10 @@ impl BuddyAlloc {
         Node::push(self.entry(k).free, p);
     }
 
-    /// available bytes
+    /// Returns the bytes currently available for allocation.
+    /// Note due to the buddy allocation algorithm, the available bytes can't be allocated
+    /// at once.
+    /// https://github.com/jjyr/buddy-alloc/issues/7
     pub fn available_bytes(&self) -> usize {
         self.end_addr - self.unavailable - self.base_addr
     }
