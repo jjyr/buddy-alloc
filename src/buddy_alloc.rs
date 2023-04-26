@@ -106,7 +106,8 @@ impl Node {
                 prev: list,
                 next: (*list).next,
             };
-            p.write_unaligned(n_list);
+            // pointer aligned to 16 bytes(MIN_LEAF_SIZE_ALIGN), so it's safe to use write
+            p.write(n_list);
             (*(*list).next).prev = p;
             (*list).next = p;
         }
