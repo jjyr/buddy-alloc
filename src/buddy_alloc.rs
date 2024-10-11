@@ -80,15 +80,19 @@ struct Node {
 impl Node {
     fn init(list: *mut Node) {
         unsafe {
-            (*list).next = list;
-            (*list).prev = list;
+            list.write(Node {
+                next: list,
+                prev: list,
+            });
         }
     }
 
     fn remove(list: *mut Node) {
         unsafe {
-            (*(*list).prev).next = (*list).next;
-            (*(*list).next).prev = (*list).prev;
+            // To prevent the compiler from optimizing alias potiners
+            // details https://github.com/jjyr/buddy-alloc/issues/16
+            core::ptr::write_volatile(&mut (*(*list).prev).next, (*list).next);
+            core::ptr::write_volatile(&mut (*(*list).next).prev, (*list).prev);
         }
     }
 
@@ -108,8 +112,10 @@ impl Node {
             };
             // pointer aligned to 16 bytes(MIN_LEAF_SIZE_ALIGN), so it's safe to use write
             p.write(n_list);
-            (*(*list).next).prev = p;
-            (*list).next = p;
+            // To prevent the compiler from optimizing alias potiners
+            // details https://github.com/jjyr/buddy-alloc/issues/16
+            core::ptr::write_volatile(&mut (*(*list).next).prev, p);
+            core::ptr::write_volatile(&mut (*list).next, p);
         }
     }
 
