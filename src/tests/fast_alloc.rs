@@ -1,5 +1,14 @@
 use crate::fast_alloc::{FastAlloc, FastAllocParam, BLOCK_SIZE};
 
+#[repr(align(64))]
+struct AlignedBuf([u8; 4096]);
+
+impl Default for AlignedBuf {
+    fn default() -> Self {
+        Self([0u8; 4096])
+    }
+}
+
 fn with_allocator<F: FnOnce(FastAlloc)>(f: F, buf: &[u8]) {
     let allocator = unsafe {
         let addr = buf.as_ptr();
@@ -12,7 +21,7 @@ fn with_allocator<F: FnOnce(FastAlloc)>(f: F, buf: &[u8]) {
 
 #[test]
 fn test_basic_malloc() {
-    let buf = [0u8; 4096];
+    let buf = AlignedBuf::default();
     // alloc a min block
     with_allocator(
         |mut allocator| {
@@ -24,16 +33,16 @@ fn test_basic_malloc() {
             assert_eq!(p_addr, p as usize);
             assert_eq!(unsafe { *p }, 42);
         },
-        &buf,
+        &buf.0,
     );
 }
 
 #[test]
 fn test_multiple_malloc() {
-    let buf = [0u8; 4096];
+    let buf = AlignedBuf::default();
     with_allocator(
         |mut allocator| {
-            let mut available_bytes = buf.len();
+            let mut available_bytes = buf.0.len();
             // alloc serveral sized blocks
             while available_bytes >= BLOCK_SIZE {
                 let bytes = BLOCK_SIZE;
@@ -41,16 +50,16 @@ fn test_multiple_malloc() {
                 available_bytes -= bytes;
             }
         },
-        &buf,
+        &buf.0,
     );
 }
 
 #[test]
 fn test_small_size_malloc() {
-    let buf = [0u8; 4096];
+    let buf = AlignedBuf::default();
     with_allocator(
         |mut allocator| {
-            let mut available_bytes = buf.len();
+            let mut available_bytes = buf.0.len();
             while available_bytes >= BLOCK_SIZE {
                 assert!(!allocator.malloc(BLOCK_SIZE).is_null());
                 available_bytes -= BLOCK_SIZE;
@@ -58,13 +67,13 @@ fn test_small_size_malloc() {
             // memory should be drained, we can't allocate even 1 byte
             assert!(allocator.malloc(1).is_null());
         },
-        &buf,
+        &buf.0,
     );
 }
 
 #[test]
 fn test_fail_malloc() {
-    let buf = [0u8; 4096];
+    let buf = AlignedBuf::default();
     // not enough memory since we only have HEAP_SIZE bytes,
     // and the allocator itself occupied few bytes
     with_allocator(
@@ -72,18 +81,18 @@ fn test_fail_malloc() {
             let p = allocator.malloc(BLOCK_SIZE + 1);
             assert!(p.is_null());
         },
-        &buf,
+        &buf.0,
     );
 }
 
 #[test]
 fn test_malloc_and_free() {
     fn _test_malloc_and_free(times: usize) {
-        let buf = [0u8; 4096];
+        let buf = AlignedBuf::default();
         with_allocator(
             |mut allocator| {
                 for _i in 0..times {
-                    let mut available_bytes = buf.len();
+                    let mut available_bytes = buf.0.len();
                     let mut ptrs = Vec::new();
                     // alloc serveral sized blocks
                     while available_bytes >= BLOCK_SIZE {
@@ -102,7 +111,7 @@ fn test_malloc_and_free() {
                     }
                 }
             },
-            &buf,
+            &buf.0,
         );
     }
     _test_malloc_and_free(10);
@@ -110,7 +119,7 @@ fn test_malloc_and_free() {
 
 #[test]
 fn test_free_bug() {
-    let buf = [0u8; 4096];
+    let buf = AlignedBuf::default();
     with_allocator(
         |mut allocator| {
             let p1 = allocator.malloc(32);
@@ -120,6 +129,6 @@ fn test_free_bug() {
             allocator.free(p2);
             allocator.free(p3);
         },
-        &buf,
+        &buf.0,
     );
 }

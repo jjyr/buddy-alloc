@@ -15,15 +15,19 @@ struct Node {
 impl Node {
     fn init(list: *mut Node) {
         unsafe {
-            (*list).next = list;
-            (*list).prev = list;
+            list.write(Node {
+                next: list,
+                prev: list,
+            });
         }
     }
 
     fn remove(list: *mut Node) {
         unsafe {
-            (*(*list).prev).next = (*list).next;
-            (*(*list).next).prev = (*list).prev;
+            // To prevent the compiler from optimizing alias potiners
+            // details https://github.com/jjyr/buddy-alloc/issues/16
+            core::ptr::write_volatile(&mut (*(*list).prev).next, (*list).next);
+            core::ptr::write_volatile(&mut (*(*list).next).prev, (*list).prev);
         }
     }
 
@@ -40,9 +44,11 @@ impl Node {
                 prev: list,
                 next: (*list).next,
             };
-            p.write_unaligned(n_list);
-            (*(*list).next).prev = p;
-            (*list).next = p;
+            p.write(n_list);
+            // To prevent the compiler from optimizing alias potiners
+            // details https://github.com/jjyr/buddy-alloc/issues/16
+            core::ptr::write_volatile(&mut (*(*list).next).prev, p);
+            core::ptr::write_volatile(&mut (*list).next, p);
         }
     }
 
@@ -106,6 +112,12 @@ impl FastAlloc {
 
         let base_addr = base_addr as usize;
         let end_addr = base_addr + nblocks * BLOCK_SIZE;
+
+        debug_assert_eq!(
+            base_addr % BLOCK_SIZE,
+            0,
+            "base_addr must align to block size"
+        );
 
         // Actual blocks to create here
         let cblocks = core::cmp::min(nblocks, initialized_nodes);
