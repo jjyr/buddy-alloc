@@ -30,20 +30,16 @@ impl NonThreadsafeAlloc {
         }
     }
 
-    unsafe fn fetch_fast_alloc<R, F: FnOnce(&mut FastAlloc) -> R>(&self, f: F) -> R {
+    unsafe fn with_fast_alloc<R, F: FnOnce(&mut FastAlloc) -> R>(&self, f: F) -> R {
         let mut inner = self.inner_fast_alloc.borrow_mut();
-        if inner.is_none() {
-            inner.replace(FastAlloc::new(self.fast_alloc_param));
-        }
-        f(inner.as_mut().expect("nerver"))
+        let alloc = inner.get_or_insert_with(|| FastAlloc::new(self.fast_alloc_param));
+        f(alloc)
     }
 
-    unsafe fn fetch_buddy_alloc<R, F: FnOnce(&mut BuddyAlloc) -> R>(&self, f: F) -> R {
+    unsafe fn with_buddy_alloc<R, F: FnOnce(&mut BuddyAlloc) -> R>(&self, f: F) -> R {
         let mut inner = self.inner_buddy_alloc.borrow_mut();
-        if inner.is_none() {
-            inner.replace(BuddyAlloc::new(self.buddy_alloc_param));
-        }
-        f(inner.as_mut().expect("nerver"))
+        let alloc = inner.get_or_insert_with(|| BuddyAlloc::new(self.buddy_alloc_param));
+        f(alloc)
     }
 }
 
@@ -52,18 +48,18 @@ unsafe impl GlobalAlloc for NonThreadsafeAlloc {
         let bytes = layout.size();
         // use BuddyAlloc if size is larger than MAX_FAST_ALLOC_SIZE
         if bytes > MAX_FAST_ALLOC_SIZE {
-            self.fetch_buddy_alloc(|alloc| alloc.malloc(bytes))
+            self.with_buddy_alloc(|alloc| alloc.malloc(bytes))
         } else {
             // try fast alloc, fallback to BuddyAlloc if failed
-            let mut p = self.fetch_fast_alloc(|alloc| alloc.malloc(bytes));
+            let mut p = self.with_fast_alloc(|alloc| alloc.malloc(bytes));
             if p.is_null() {
-                p = self.fetch_buddy_alloc(|alloc| alloc.malloc(bytes));
+                p = self.with_buddy_alloc(|alloc| alloc.malloc(bytes));
             }
             p
         }
     }
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        let freed = self.fetch_fast_alloc(|alloc| {
+        let freed = self.with_fast_alloc(|alloc| {
             if alloc.contains_ptr(ptr) {
                 alloc.free(ptr);
                 true
@@ -72,7 +68,7 @@ unsafe impl GlobalAlloc for NonThreadsafeAlloc {
             }
         });
         if !freed {
-            self.fetch_buddy_alloc(|alloc| alloc.free(ptr));
+            self.with_buddy_alloc(|alloc| alloc.free(ptr));
         }
     }
 }
