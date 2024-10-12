@@ -1,9 +1,12 @@
 default: integration
 
-integration: check-fmt check clippy test run-example
+integration: check-fmt check clippy test test-release run-example
 
 test:
 	cargo test --all ${TEST_ARGS} -- --nocapture
+
+test-release:
+	cargo test --release --all ${TEST_ARGS} -- --nocapture
 
 clippy:
 	cargo clippy --all --all-targets
