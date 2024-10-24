@@ -1,3 +1,5 @@
+.PHONY: default integration test fuzz
+
 default: integration
 
 integration: check-fmt check clippy test test-release run-example
@@ -23,3 +25,7 @@ run-example:
 	for example in ${EXAMPLES} ; do \
 		cargo run --example $$example; \
 	done
+
+fuzz:
+	cargo +nightly fuzz run chaos
+
