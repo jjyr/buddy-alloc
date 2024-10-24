@@ -3,7 +3,7 @@ use arbitrary::Arbitrary;
 use buddy_alloc::{BuddyAllocParam, FastAllocParam, NonThreadsafeAlloc};
 use libfuzzer_sys::fuzz_target;
 use std::alloc::{GlobalAlloc, Layout};
-use std::ptr::{addr_of, NonNull};
+use std::cmp::{max, min};
 
 #[derive(Debug, Arbitrary)]
 enum Action {
@@ -23,16 +23,13 @@ static mut HEAP: Heap<HEAP_SIZE> = Heap([0u8; HEAP_SIZE]);
 
 fuzz_target!(|data: (u16, u32, u8, Vec<Action>)| {
     let (fast_heap_size, heap_size, leaf_size, action_list) = data;
-    let fast_size = std::cmp::max(
-        64,
-        std::cmp::min(fast_heap_size as usize & 0xc0, FAST_HEAP_SIZE),
-    );
-    let heap_size = std::cmp::max(256, std::cmp::min(heap_size as usize & 0xc0, HEAP_SIZE));
-    let leaf_size = std::cmp::max(16, std::cmp::min(leaf_size as usize & 0xf0, LEAF_SIZE));
+    let fast_heap_size = max(64, min(fast_heap_size as usize & 0xffc0, FAST_HEAP_SIZE));
+    let heap_size = max(256, min(heap_size as usize & 0xffffffc0, HEAP_SIZE));
+    let leaf_size = max(16, min(leaf_size as usize & 0xf0, LEAF_SIZE));
 
     #[allow(static_mut_refs)]
-    let mut heap = unsafe {
-        let fast_param = FastAllocParam::new(FAST_HEAP.0.as_ptr(), fast_size);
+    let heap = unsafe {
+        let fast_param = FastAllocParam::new(FAST_HEAP.0.as_ptr(), fast_heap_size);
         let buddy_param = BuddyAllocParam::new(HEAP.0.as_ptr(), heap_size, leaf_size);
         NonThreadsafeAlloc::new(fast_param, buddy_param)
     };
