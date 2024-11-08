@@ -1,5 +1,7 @@
 # Buddy-alloc
+
 [![Crates.io](https://img.shields.io/crates/v/buddy-alloc.svg)](https://crates.io/crates/buddy-alloc)
+[![Downloads](https://img.shields.io/crates/d/buddy-alloc?style=flat-square)](https://crates.io/crates/buddy-alloc)
 
 
 Buddy-alloc is a memory allocator for no-std Rust, used for embedded environments.
